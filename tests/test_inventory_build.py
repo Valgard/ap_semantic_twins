@@ -97,6 +97,7 @@ def test_include_tests_keeps_the_test_corpus(repo: Path):
 def test_totals_are_consistent_with_the_file_list(repo: Path):
     inventory = build_inventory(repo)
     assert inventory["totals"]["files"] == len(inventory["files"])
+    assert inventory["totals"]["lines"] == sum(e["lines"] for e in inventory["files"])
     assert inventory["totals"]["chunks"] == sum(
         len(e["chunks"]) for e in inventory["files"]
     )
