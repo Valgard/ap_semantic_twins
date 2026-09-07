@@ -6,10 +6,10 @@ skill against it must produce exactly these verdicts. Anything else is a regress
 | Pair | Expected outcome | Why |
 | --- | --- | --- |
 | `pricing/checkout.py:1` ↔ `pricing/invoice.py:1` | `DIVERGENT` | Same purpose, two behavioural differences: side B lacks the negative-rate guard and truncates where side A rounds half-up. The report must name both differences and identify side A as the corrected one. |
-| `slug/article.py:4` ↔ `slug/category.py:4` | `STABLE` | Same purpose, same behaviour, different names. Consolidation candidate, no defect. |
+| `slug/article.py:4` ↔ `slug/category.py:1` | `STABLE` | The two share a purpose and an output — both turn a name into a URL-safe key — while sharing no structure, no call and no literal: one is a regex substitution, the other a character-by-character loop. This is the corpus's type-4 case, the only reason this tool exists rather than a token- or AST-based clone detector. A run that misses it has failed at the thing the tool exists for. |
 | `ordering/CustomerDto.php:7` ↔ `shipping/CustomerDto.php:9` | `JUSTIFIED` | Identical mapping across two bounded contexts, with the decoupling stated in a comment. Named, not counted as a finding. |
 | `validation/email.py:1` ↔ `validation/postcode.py:1` | `NOT_A_TWIN` | Both summarise as "validates user input" and will cluster together. Stage 4 must refute them: they validate unrelated things. |
-| `generated/Mapper.g.cs:10` ↔ `slug/category.py:4` | never reported | The generated file must not reach stage 2 at all. |
+| `generated/Mapper.g.cs:10` ↔ `slug/category.py:1` | never reported | The generated file must not reach stage 2 at all. |
 
 ## How to run it
 
