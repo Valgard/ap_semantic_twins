@@ -52,6 +52,7 @@ misreports this block is still non-conformant. Expected values for this corpus:
 - `Unsupported extensions: none`, `Missing files: none`, `Undecodable files: none`,
   `Permission denied files: none`.
 - `Generated files: generated/Mapper.g.cs`.
+- `Untracked files: none`.
 - `Refuted in verification (NOT_A_TWIN):` `1` group if the near-miss pair clustered, `0` if
   it never did.
 - `Verification returned nothing: 0` — nothing in this corpus should cause a stage 4

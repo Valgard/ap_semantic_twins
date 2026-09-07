@@ -39,7 +39,10 @@ The path is unique per run — a fixed name collides between concurrent audits. 
 above because shell state does not carry into your next instruction: read the path back
 from the transcript, not from a variable that no longer exists by then.
 
-Read the `totals` and `excluded` counts and state them. If `totals.files` is zero, stop and
+Read `totals`, `excluded`, `excluded_paths` and `unsupported_extensions` — the Coverage block
+in stage 5 draws every one of its fields from these four, so a stage that reads only the
+counts leaves the report with nothing to fill the path lists and the per-extension breakdown
+with. State the `totals` and `excluded` counts now. If `totals.files` is zero, stop and
 report why: if every `excluded` counter is also zero, nothing was tracked — there is no
 committed source to audit; otherwise every file was filtered, and the nonzero `excluded`
 buckets say by which rule.
@@ -206,10 +209,11 @@ Corpus: <all source files | tests>
 Examined: <n> files, <n> units, <n> candidate groups (before the cap)
 Chunks: <n> dispatched, <n> returned units, <n> returned nothing, <n> unparseable lines
 Empty chunks (still empty after re-dispatch): <path:range>, <path:range>, ... (or none)
-Partitioned: yes/no (<n> partitions)
+Partitioned: yes (<n> partitions) | no
 Excluded: <n> generated, <n> by path rule, <n> unsupported extension, <n> untracked, <n> missing, <n> undecodable, <n> permission denied
-Unsupported extensions: <ext>: <n>, <ext>: <n>, ...
+Unsupported extensions: <ext>: <n>, <ext>: <n>, ... (or none)
 Generated files: <path>, <path>, ... (or none)
+Untracked files: <path>, <path>, ... (or none)
 Missing files: <path>, <path>, ... (or none)
 Undecodable files: <path>, <path>, ... (or none)
 Permission denied files: <path>, <path>, ... (or none)
