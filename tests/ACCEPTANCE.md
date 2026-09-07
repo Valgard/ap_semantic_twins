@@ -18,10 +18,12 @@ individual verdict below is correct.
 
 ## How to run it
 
-1. `python3 scripts/inventory.py tests/fixtures/twin-corpus` — the invocation form
-   `SKILL.md` mandates for stage 1 (plain `python3`, no `uv run`). `uv run` stays reserved
-   for this repo's own dev-time tooling (pytest, ruff, vulture below); using it here instead
-   would exercise a different code path than the one that ships.
+1. `python3 "$(pwd)/scripts/inventory.py" tests/fixtures/twin-corpus`, run from the
+   repository root so `$(pwd)` is the skill base directory — the invocation form `SKILL.md`
+   mandates for stage 1: plain `python3` (no `uv run`) against an absolute path to the
+   script, never a path relative to the target repo. `uv run` stays reserved for this repo's
+   own dev-time tooling (pytest, ruff, vulture — see README.md); using it here instead would
+   exercise a different code path than the one that ships.
    → `generated/Mapper.g.cs` must not appear in `files`, and `excluded.generated` must be
    `1`. To check it by name instead of by count, `excluded_paths.generated` now lists the
    path.

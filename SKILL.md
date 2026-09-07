@@ -82,7 +82,8 @@ Give each subagent this brief, with `<path>` and the line range filled in:
 
 Collect every line into one JSONL index.
 
-Track what came back, per chunk: how many you dispatched, how many returned at least one
+Track what came back, per chunk: how many you dispatched — count chunks, not attempts, so a
+chunk re-dispatched below is still one dispatch, not two — how many returned at least one
 unit, how many returned nothing at all, and how many lines failed to parse as JSON — count
 the unparseable lines rather than dropping them silently. If a chunk returned nothing,
 re-dispatch it once; count it toward "returned nothing" only if it is still empty after

@@ -161,13 +161,14 @@ groups dispatched to stage 4. Any shortfall is a verification dispatch that came
 empty, reported as its own line rather than folded into whichever total is convenient — a
 failed stage 4 call must not be indistinguishable from a group that never existed.
 
-Divergence outranks size. Every finding names two concrete locations.
+Divergence outranks size. Every finding cites a concrete `path:line` for each member — two
+for a pair, one per member for a larger group.
 
 ### Model allocation and fan-out limits
 
 | Stage | Model | Reason |
 | --- | --- | --- |
-| 2 — purpose extraction | `haiku` | Structured extraction against a fixed schema, run once per file. The volume stage; it must be the cheapest one. |
+| 2 — purpose extraction | `haiku` | Structured extraction against a fixed schema, run once per file or chunk. The volume stage; it must be the cheapest one. |
 | 3 — clustering | orchestrator's own | Needs the large context window and holds the whole index at once. Not a subagent. |
 | 4 — verification | inherit | Judgement work against real source. Under-powering the only stage that can refute would defeat its purpose. |
 
@@ -199,9 +200,9 @@ ignored after two runs.
 case or a validation landed on one side only — whereas a stable twin is maintenance load
 and nothing worse.
 
-Every finding cites two specific locations and never makes a claim about a category or a
-layer. A correctly measured single case placed under a category heading claims a reach it
-has not earned.
+Every finding cites a concrete `path:line` for each member — two for a pair, one per member
+for a larger group. It never makes a claim about a category or a layer. A correctly measured
+single case placed under a category heading claims a reach it has not earned.
 
 ## 5. Two entry points, one method
 
