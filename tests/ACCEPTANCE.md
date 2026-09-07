@@ -9,7 +9,7 @@ skill against it must produce exactly these verdicts. Anything else is a regress
 | `slug/article.py:4` ↔ `slug/category.py:4` | `STABLE` | Same purpose, same behaviour, different names. Consolidation candidate, no defect. |
 | `ordering/CustomerDto.php:7` ↔ `shipping/CustomerDto.php:9` | `JUSTIFIED` | Identical mapping across two bounded contexts, with the decoupling stated in a comment. Named, not counted as a finding. |
 | `validation/email.py:1` ↔ `validation/postcode.py:1` | `NOT_A_TWIN` | Both summarise as "validates user input" and will cluster together. Stage 4 must refute them: they validate unrelated things. |
-| `generated/Mapper.g.cs:11` ↔ `slug/category.py:4` | never reported | The generated file must not reach stage 2 at all. |
+| `generated/Mapper.g.cs:10` ↔ `slug/category.py:4` | never reported | The generated file must not reach stage 2 at all. |
 
 ## How to run it
 
