@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -100,6 +101,50 @@ def test_running_installer_through_the_deployed_symlink_does_not_destroy_it(
     assert skill_dest.is_symlink()
     assert skill_dest.resolve() == REPO_ROOT.resolve()
     assert (skill_dest / "SKILL.md").exists()
+
+
+def _copy_real_checkout(dest: Path) -> None:
+    """Copy the parts of this repository install.sh cares about into `dest`,
+    so it looks like a real (non-symlinked) checkout placed there -- e.g. by
+    `git clone` or a plain file copy, never installed through this script."""
+    dest.mkdir(parents=True, exist_ok=True)
+    shutil.copy(REPO_ROOT / "SKILL.md", dest / "SKILL.md")
+    shutil.copytree(REPO_ROOT / "references", dest / "references")
+    shutil.copytree(REPO_ROOT / "scripts", dest / "scripts")
+    shutil.copytree(REPO_ROOT / "agents", dest / "agents")
+
+
+def test_running_installer_from_a_real_checkout_placed_under_claude_refuses(
+    fake_home: FakeHome,
+):
+    # The guard's other half. `cd -P` defeats REPO == SKILL_DEST only when
+    # SKILL_DEST is a symlink to resolve *through*; a real checkout placed
+    # directly at $HOME/.claude/skills/semantic-twins (cloned or copied there
+    # by hand, never installed through this script) has no symlink to
+    # resolve, so REPO physically equals SKILL_DEST. Without the categorical
+    # guard, running install.sh from there would make `rm -rf "$SKILL_DEST"`
+    # delete this very checkout and recreate it as a dead, self-referential
+    # link -- silently, with exit 0.
+    skill_dest = _skill_dest(fake_home.path)
+    _copy_real_checkout(skill_dest)
+    marker = (skill_dest / "SKILL.md").read_text()
+
+    deployed_install_sh = str(skill_dest / "scripts" / "install.sh")
+    env = os.environ.copy()
+    env["HOME"] = str(fake_home.path)
+    result = subprocess.run(
+        [deployed_install_sh],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "must be run from the repository checkout" in result.stderr
+    assert skill_dest.is_dir()
+    assert not skill_dest.is_symlink()
+    assert (skill_dest / "SKILL.md").read_text() == marker
 
 
 def test_copy_mode_deploys_scripts_directory_with_only_inventory(fake_home: FakeHome):

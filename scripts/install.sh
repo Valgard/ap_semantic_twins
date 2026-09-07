@@ -57,16 +57,22 @@ resolve_file_symlink() {
     # depending on GNU-only `readlink -f` (unavailable on stock macOS).
     # Directory symlinks (SKILL_DEST) are resolved with `cd -P`/`pwd -P`
     # instead, since you cannot `cd` into a file.
+    #
+    # Both branches below run the target's directory through `cd -P`/`pwd -P`
+    # -- the same physical resolution $REPO already went through. An absolute
+    # target left as found (the previous behaviour) can name the same
+    # directory as $REPO through a different path (e.g. /tmp/... vs.
+    # /private/tmp/... on macOS) and compare unequal, reporting drift against
+    # a link that is not actually wrong.
     link="$1"
     target="$(readlink "$link")"
     case "$target" in
-        /*) printf '%s\n' "$target" ;;
-        *)
-            printf '%s/%s\n' \
-                "$(cd -P "$(dirname "$link")/$(dirname "$target")" && pwd -P)" \
-                "$(basename "$target")"
-            ;;
+        /*) target_dir="$(dirname "$target")" ;;
+        *) target_dir="$(dirname "$link")/$(dirname "$target")" ;;
     esac
+    printf '%s/%s\n' \
+        "$(cd -P "$target_dir" && pwd -P)" \
+        "$(basename "$target")"
 }
 
 check_diff() {
@@ -151,6 +157,14 @@ if [ "$check_only" -eq 1 ]; then
                 scripts_ok=0
             fi
         done
+        # dotglob only for this one glob, restored right after -- a hidden
+        # leftover (e.g. .leftover.py) must count as unexpected too, but the
+        # rest of the script must not start matching dotfiles elsewhere.
+        # `shopt -p dotglob` itself exits 1 when the option is currently
+        # unset (the common case), which would trip `set -e` right here --
+        # the `|| true` keeps the captured value without losing that status.
+        dotglob_previously="$(shopt -p dotglob)" || true
+        shopt -s dotglob
         for deployed_entry in "$SKILL_DEST/scripts"/*; do
             entry_name="$(basename "$deployed_entry")"
             entry_known=0
@@ -166,6 +180,7 @@ if [ "$check_only" -eq 1 ]; then
                 scripts_ok=0
             fi
         done
+        eval "$dotglob_previously"
         if [ "$scripts_ok" -eq 1 ]; then
             echo "scripts: copy in sync"
         fi
