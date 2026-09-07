@@ -44,6 +44,8 @@ misreports this block is still non-conformant. Expected values for this corpus:
 - `Chunks:` `8` dispatched — one chunk per file (`totals.chunks` is also `8`; none of the
   eight files exceeds 800 lines). Every file in this corpus defines a named unit, so a
   healthy run reports `0` for both `returned nothing` and `unparseable lines`.
+- `Empty chunks (still empty after re-dispatch): none` — follows from `returned nothing`
+  being `0` above; there is nothing to name.
 - `Partitioned: no` — 8 units is nowhere near the 20,000-unit partitioning threshold.
 - `Excluded:` `1` generated, `0` by path rule, `0` unsupported extension, `0` untracked, `0`
   missing, `0` undecodable, `0` permission denied — from the same inventory run as step 1.
@@ -58,8 +60,9 @@ misreports this block is still non-conformant. Expected values for this corpus:
   candidate groups.
 
 The `Chunks:` line and the two verdict-sum lines (`Refuted in verification`, `Verification
-returned nothing`) are round 2 additions; a report that omits them is non-conformant
-regardless of how many verdicts it gets right.
+returned nothing`) are round 2 additions, and `Empty chunks` is a round 3 addition; a
+report that omits any of them is non-conformant regardless of how many verdicts it gets
+right.
 
 ## Exercising the agent against the same corpus
 
