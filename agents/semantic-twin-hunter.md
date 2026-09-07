@@ -41,9 +41,24 @@ Two representative scenarios:
 
 ### 1. Establish the change scope
 
-Determine which units the change adds. If the caller named a scope, use it verbatim. If
-not, derive it from `git diff <base>...HEAD` — never from `git diff` alone, which is empty
-once the branch work is committed and would make this review a placebo.
+Determine which units the change adds. If the caller named a scope, use it verbatim.
+
+Otherwise derive it from `git diff <base>...HEAD` — never from `git diff` alone, which is
+empty once the branch work is committed and would make this review a placebo.
+
+Resolve `<base>` in this order, stopping at the first that works:
+
+1. A base the caller named.
+2. The merge base with the remote default branch:
+   `git merge-base HEAD "$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD)"`.
+3. The merge base with `origin/main`, then `origin/master`, then local `main`, then `master`.
+
+If none of those resolves, or if HEAD is itself the default branch — where the diff would be
+empty or would span the whole history — **stop and ask the caller for a base**. Do not guess
+one. A silently wrong base yields a confident report about the wrong set of units, which is
+worse than no report at all.
+
+Say in your output which base you used and how you resolved it.
 
 List every function, method, class and type the diff introduces.
 
