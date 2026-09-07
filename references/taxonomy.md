@@ -58,9 +58,10 @@ nothing worse.
 
 # What a finding may claim
 
-Every finding cites **two concrete locations** as `path:line`. It never makes a claim about
-a category, a layer or a module. A correctly measured single case placed under a category
-heading claims a reach it has not earned.
+Every finding cites a concrete `path:line` for **each member** — two for a pair, one per
+member for a larger group. It never makes a claim about a category, a layer or a module. A
+correctly measured single case placed under a category heading claims a reach it has not
+earned.
 
 The report also states what it examined and what it excluded. It makes no completeness
 claim.

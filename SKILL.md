@@ -7,8 +7,8 @@ description: Use when hunting for semantic twins — type-4 clones, meaning func
 
 Announce at start: "Using semantic-twins to audit <path> for type-4 clones."
 
-Read `references/taxonomy.md` before stage 4. It defines four verification outcomes plus
-one pre-verification exclusion, and what a finding may claim.
+Read `<skill base directory>/references/taxonomy.md` before stage 4. It defines four
+verification outcomes plus one pre-verification exclusion, and what a finding may claim.
 
 ## What this is for
 
@@ -32,9 +32,12 @@ read as if it covered production code would mislead.
 ```bash
 INVENTORY="$(mktemp "${TMPDIR:-/tmp}/twins-inventory.XXXXXX.json")"
 python3 "<skill base directory>/scripts/inventory.py" <repo> > "$INVENTORY"
+echo "$INVENTORY"
 ```
 
-The path is unique per run — a fixed name collides between concurrent audits.
+The path is unique per run — a fixed name collides between concurrent audits. It is echoed
+above because shell state does not carry into your next instruction: read the path back
+from the transcript, not from a variable that no longer exists by then.
 
 Read the `totals` and `excluded` counts and state them. If `totals.files` is zero, stop and
 report why: if every `excluded` counter is also zero, nothing was tracked — there is no
@@ -79,13 +82,19 @@ Collect every line into one JSONL index.
 Track what came back, per chunk: how many you dispatched, how many returned at least one
 unit, how many returned nothing at all, and how many lines failed to parse as JSON — count
 the unparseable lines rather than dropping them silently. If a chunk returned nothing,
-re-dispatch it once; if it still returns nothing, name its `path:range` for the Coverage
-block instead of letting it vanish. These four numbers are mandatory in stage 5's report — a
-run where a third of the chunk agents came back empty must not read like a complete one.
+re-dispatch it once; count it toward "returned nothing" only if it is still empty after
+that retry, so the number means "still empty after we tried again," not "empty on the first
+try." Name the `path:range` of each chunk still empty after re-dispatch for the Coverage
+block instead of letting it vanish — list up to 20 there and say "and `<n>` more" beyond
+that, so a badly degraded run does not produce a report that is mostly a list of ranges.
+These four numbers are mandatory in stage 5's report — a run where a third of the chunk
+agents came back empty must not read like a complete one.
 
 Chunks overlap by 40 lines so that no unit straddling a seam is missed, which means a unit
 inside the overlap is emitted by both neighbouring subagents. Before clustering, discard
 records that duplicate an existing `(file, line, name)` — keep the first, drop the rest.
+The unit count in stage 5's `Examined:` line is taken after this dedup, not before, so it
+matches what stage 3 actually saw.
 
 ## Stage 3 — Clustering
 
@@ -103,8 +112,11 @@ Two units in the same group need not be in the same language or layer. A twin th
 module boundaries is the most valuable kind — two people solved the same problem without
 knowing about each other.
 
-Discard any group whose members all share the same `path:line`, even after stage 2's
-dedup — a residual duplicate here is the same unit counted against itself, not a twin.
+Within each group, discard any member whose `path:line` duplicates another member's, even
+after stage 2's dedup — a residual duplicate here is the same unit counted against itself,
+not a second twin. This is the same guard stage 2's dedup applies, just at group-assembly
+time; if a group is left with fewer than two distinct members afterward, discard the group
+itself, since a twin needs at least two.
 
 Record the surviving count as **candidate groups** — the Coverage block reports it before
 the next step caps it.
@@ -152,8 +164,8 @@ filled in:
 > `STABLE` verdict these numbers are required, not optional: they are the only input to the
 > consolidation size the report ranks by.
 >
-> Cite two concrete `path:line` locations. Make no claim about a category, a layer or a
-> module.
+> Cite the concrete `path:line` location of **every member** of the group. Make no claim
+> about a category, a layer or a module.
 
 ## Stage 5 — Report
 
@@ -193,6 +205,7 @@ Consolidation: ~<n> lines
 Corpus: <all source files | tests>
 Examined: <n> files, <n> units, <n> candidate groups (before the cap)
 Chunks: <n> dispatched, <n> returned units, <n> returned nothing, <n> unparseable lines
+Empty chunks (still empty after re-dispatch): <path:range>, <path:range>, ... (or none)
 Partitioned: yes/no (<n> partitions)
 Excluded: <n> generated, <n> by path rule, <n> unsupported extension, <n> untracked, <n> missing, <n> undecodable, <n> permission denied
 Unsupported extensions: <ext>: <n>, <ext>: <n>, ...
