@@ -1,3 +1,4 @@
+import json
 import subprocess
 from pathlib import Path
 
@@ -34,8 +35,19 @@ def repo(tmp_path: Path) -> Path:
     (tmp_path / "vendor").mkdir()
     (tmp_path / "vendor" / "lib.py").write_text("B = 2\n")
 
+    # A dangling symlink (target never existed) and a file that is tracked
+    # but has since been deleted from disk without `git rm` -- both everyday
+    # mid-rebase states, and both must not crash the inventory.
+    (tmp_path / "src" / "dangling.py").symlink_to(
+        tmp_path / "src" / "does-not-exist.py"
+    )
+    (tmp_path / "src" / "ghost.py").write_text("C = 3\n")
+
     _git(tmp_path, "add", "-A")
     _git(tmp_path, "commit", "-q", "-m", "fixture")
+
+    (tmp_path / "src" / "ghost.py").unlink()
+
     return tmp_path
 
 
@@ -71,7 +83,11 @@ def test_build_inventory_counts_unreadable_files_separately(repo: Path):
     inventory = build_inventory(repo)
     kept = {entry["path"] for entry in inventory["files"]}
     assert "src/blob.py" not in kept
-    assert inventory["excluded"]["unreadable"] == 1
+    assert "src/dangling.py" not in kept
+    assert "src/ghost.py" not in kept
+    # blob.py (bad encoding), dangling.py (dangling symlink) and ghost.py
+    # (tracked but deleted from disk) all currently share this one bucket.
+    assert inventory["excluded"]["unreadable"] == 3
     assert inventory["excluded"]["path_rule"] == 2
 
 
@@ -95,18 +111,31 @@ def test_include_tests_keeps_the_test_corpus(repo: Path):
 
 
 def test_totals_are_consistent_with_the_file_list(repo: Path):
+    # Fixture's only kept files are src/calc.py (2 lines, 1 chunk) and
+    # src/long.py (900 lines, chunked as [1, 800] and [761, 900] -- see
+    # test_build_inventory_chunks_long_files). Asserted as literal constants,
+    # not recomputed from the implementation's own output, so a wrong sum
+    # cannot mark its own homework.
     inventory = build_inventory(repo)
-    assert inventory["totals"]["files"] == len(inventory["files"])
-    assert inventory["totals"]["lines"] == sum(e["lines"] for e in inventory["files"])
-    assert inventory["totals"]["chunks"] == sum(
-        len(e["chunks"]) for e in inventory["files"]
-    )
+    assert inventory["totals"]["files"] == 2
+    assert inventory["totals"]["lines"] == 902
+    assert inventory["totals"]["chunks"] == 3
 
 
 def test_cli_writes_json_to_stdout(repo: Path, capsys):
     exit_code = main([str(repo)])
     assert exit_code == 0
-    assert '"files"' in capsys.readouterr().out
+    payload = json.loads(capsys.readouterr().out)
+    assert isinstance(payload["files"], list)
+    assert any(entry["path"] == "src/calc.py" for entry in payload["files"])
+
+
+def test_cli_include_tests_flag_keeps_the_test_corpus(repo: Path, capsys):
+    exit_code = main([str(repo), "--include-tests"])
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    kept = {entry["path"] for entry in payload["files"]}
+    assert "tests/test_calc.py" in kept
 
 
 def test_cli_rejects_a_path_that_is_not_a_git_repo(tmp_path: Path, capsys):

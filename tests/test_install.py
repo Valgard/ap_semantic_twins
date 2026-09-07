@@ -53,6 +53,15 @@ def test_symlink_mode_creates_symlinks_at_both_destinations(fake_home: FakeHome)
     assert _agent_dest(fake_home.path).is_symlink()
 
 
+def test_symlink_targets_resolve_to_the_repository(fake_home: FakeHome):
+    fake_home.run("--mode", "symlink")
+    assert _skill_dest(fake_home.path).resolve() == REPO_ROOT.resolve()
+    assert (
+        _agent_dest(fake_home.path).resolve()
+        == (REPO_ROOT / "agents" / "semantic-twin-hunter.md").resolve()
+    )
+
+
 def test_copy_mode_deploys_scripts_directory_with_only_inventory(fake_home: FakeHome):
     result = fake_home.run("--mode", "copy")
     assert result.returncode == 0
@@ -130,6 +139,9 @@ def test_unknown_mode_or_unknown_flag_exits_two(fake_home: FakeHome):
     assert result.returncode == 2
 
     result = fake_home.run("--frobnicate")
+    assert result.returncode == 2
+
+    result = fake_home.run("--mode")
     assert result.returncode == 2
 
 
