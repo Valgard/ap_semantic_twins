@@ -8,7 +8,7 @@ skill against it must produce exactly these verdicts. Anything else is a regress
 | `pricing/checkout.py:1` ↔ `pricing/invoice.py:1` | `DIVERGENT` | Same purpose, two behavioural differences: side B lacks the negative-rate guard and truncates where side A rounds half-up. The report must name both differences and identify side A as the corrected one. |
 | `slug/article.py:4` ↔ `slug/category.py:1` | `STABLE` | The two share a purpose and an output — both turn a name into a URL-safe key — while sharing no structure, no call and no literal: one is a regex substitution, the other a character-by-character loop. This is the corpus's type-4 case, the only reason this tool exists rather than a token- or AST-based clone detector. A run that misses it has failed at the thing the tool exists for. |
 | `ordering/CustomerDto.php:7` ↔ `shipping/CustomerDto.php:9` | `JUSTIFIED` | Identical mapping across two bounded contexts, with the decoupling stated in a comment. Named, not counted as a finding. |
-| `validation/email.py:1` ↔ `validation/postcode.py:1` | `NOT_A_TWIN` | Both summarise as "validates user input" and will cluster together. Stage 4 must refute them: they validate unrelated things. |
+| `validation/email.py:1` ↔ `validation/postcode.py:1` | `NOT_A_TWIN` | Both functions are named `validate`, take one argument and raise on rejection, so a stage 2 that drifted toward describing shape rather than effect would cluster them; a rule-following stage 2 will not. Either outcome is a pass — the pair reported as `NOT_A_TWIN`, or never clustered at all. The row fails only if the pair is reported as a twin of any kind. |
 | `generated/Mapper.g.cs:10` ↔ `slug/category.py:1` | never reported | The generated file must not reach stage 2 at all. |
 
 ## How to run it
@@ -37,5 +37,6 @@ are not in its asymmetric left-hand side.
   net minor units"), so the two never clustered.
 - **Justified pair reported as a finding** — stage 4 ignored the stated decoupling. Without
   a working `JUSTIFIED` outcome the tool produces a wall of noise.
-- **Near-miss reported** — stage 4 confirmed instead of refuting. Check that its brief is
-  phrased as refutation, not review.
+- **Near-miss reported as a twin** — stage 4 confirmed instead of refuting, or stage 2
+  drifted toward describing shape rather than effect and the pair clustered when it
+  should not have. Check that its brief is phrased as refutation, not review.
