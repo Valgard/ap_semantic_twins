@@ -28,7 +28,7 @@ Restart Claude Code afterwards — skills and agents are discovered at session s
 | --- | --- |
 | `SKILL.md` | The audit orchestrator |
 | `agents/semantic-twin-hunter.md` | Diff-scoped agent, `pr-review-toolkit` shape |
-| `references/taxonomy.md` | The five verification outcomes and what a finding may claim |
+| `references/taxonomy.md` | Four verification outcomes plus one pre-verification exclusion, and what a finding may claim |
 | `scripts/inventory.py` | Stage 1: deterministic file inventory and chunking plan |
 | `scripts/install.sh` | Deployment into `~/.claude` |
 | `tests/fixtures/twin-corpus/` | Acceptance corpus, one planted case per outcome |
