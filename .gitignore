@@ -1,0 +1,13 @@
+.DS_Store
+
+# Isolated worktrees (see global CLAUDE.md)
+.worktrees/
+
+# Superpowers scratch: plans and brainstorming leftovers, never committed.
+# docs/specs/ and docs/adrs/ stay tracked.
+docs/superpowers/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
