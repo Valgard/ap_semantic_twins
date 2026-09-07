@@ -93,6 +93,11 @@ def chunk_plan(
     line_count: int, max_lines: int = 800, overlap: int = 40
 ) -> list[tuple[int, int]]:
     """Split a file into 1-based inclusive line ranges that overlap at the seams."""
+    if overlap >= max_lines:
+        raise ValueError(
+            f"overlap ({overlap}) must be smaller than max_lines ({max_lines}), "
+            "or the chunk boundary never advances"
+        )
     if line_count <= 0:
         return []
     chunks: list[tuple[int, int]] = []

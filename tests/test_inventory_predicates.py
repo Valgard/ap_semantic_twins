@@ -128,3 +128,8 @@ def test_very_long_file_produces_consecutive_overlapping_chunks():
 
 def test_empty_file_produces_no_chunks():
     assert chunk_plan(0) == []
+
+
+def test_overlap_at_or_above_max_lines_is_rejected():
+    with pytest.raises(ValueError, match=r"overlap.*max_lines"):
+        chunk_plan(2000, max_lines=40, overlap=40)

@@ -30,7 +30,12 @@ if [ "$mode" != symlink ] && [ "$mode" != copy ]; then
 fi
 
 if [ "$check_only" -eq 1 ]; then
-    if [ ! -e "$SKILL_DEST" ] && [ ! -e "$AGENT_DEST" ]; then
+    skill_present=0
+    [ -e "$SKILL_DEST" ] || [ -L "$SKILL_DEST" ] && skill_present=1
+    agent_present=0
+    [ -e "$AGENT_DEST" ] || [ -L "$AGENT_DEST" ] && agent_present=1
+
+    if [ "$skill_present" -eq 0 ] && [ "$agent_present" -eq 0 ]; then
         echo "not installed" >&2
         exit 1
     fi
@@ -39,7 +44,10 @@ if [ "$check_only" -eq 1 ]; then
 
     # Each destination is judged on its own. A symlink cannot drift; a copy can.
     # Judging them together lets a symlinked skill vouch for a stale agent copy.
-    if [ -L "$SKILL_DEST" ]; then
+    if [ -L "$SKILL_DEST" ] && [ ! -e "$SKILL_DEST" ]; then
+        echo "drift: SKILL.md is a broken symlink" >&2
+        status=1
+    elif [ -L "$SKILL_DEST" ]; then
         echo "skill: symlink, cannot drift"
     else
         if diff -rq "$REPO/SKILL.md" "$SKILL_DEST/SKILL.md" >/dev/null 2>&1; then
@@ -64,7 +72,10 @@ if [ "$check_only" -eq 1 ]; then
         fi
     fi
 
-    if [ -L "$AGENT_DEST" ]; then
+    if [ -L "$AGENT_DEST" ] && [ ! -e "$AGENT_DEST" ]; then
+        echo "drift: semantic-twin-hunter.md is a broken symlink" >&2
+        status=1
+    elif [ -L "$AGENT_DEST" ]; then
         echo "agent: symlink, cannot drift"
     elif diff -q "$REPO/agents/semantic-twin-hunter.md" "$AGENT_DEST" >/dev/null 2>&1; then
         echo "agent: copy in sync"

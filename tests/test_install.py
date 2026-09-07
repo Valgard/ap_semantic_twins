@@ -139,3 +139,14 @@ def test_gitignore_instruction_only_in_symlink_mode(fake_home: FakeHome):
 
     copy_result = fake_home.run("--mode", "copy")
     assert "~/.claude/.gitignore" not in copy_result.stdout
+
+
+def test_check_reports_a_broken_symlink_rather_than_not_installed(fake_home: FakeHome):
+    skill_dest = _skill_dest(fake_home.path)
+    skill_dest.parent.mkdir(parents=True, exist_ok=True)
+    skill_dest.symlink_to(fake_home.path / "nonexistent-target")
+
+    result = fake_home.run("--check")
+    assert result.returncode == 1
+    assert "not installed" not in result.stderr
+    assert "broken symlink" in result.stderr
