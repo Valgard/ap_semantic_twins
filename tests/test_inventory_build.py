@@ -79,15 +79,45 @@ def test_build_inventory_counts_each_exclusion_reason(repo: Path):
     assert inventory["excluded"]["unsupported_extension"] == 1
 
 
-def test_build_inventory_counts_unreadable_files_separately(repo: Path):
+def test_build_inventory_splits_unreadable_files_by_cause(repo: Path):
     inventory = build_inventory(repo)
     kept = {entry["path"] for entry in inventory["files"]}
     assert "src/blob.py" not in kept
     assert "src/dangling.py" not in kept
     assert "src/ghost.py" not in kept
-    # blob.py (bad encoding), dangling.py (dangling symlink) and ghost.py
-    # (tracked but deleted from disk) all currently share this one bucket.
-    assert inventory["excluded"]["unreadable"] == 3
+    # dangling.py (dangling symlink) and ghost.py (tracked but deleted from
+    # disk) are both a FileNotFoundError -> "missing". blob.py is a bad
+    # encoding -> "undecodable". Neither triggers a permission error here.
+    assert inventory["excluded"]["missing"] == 2
+    assert inventory["excluded"]["undecodable"] == 1
+    assert inventory["excluded"]["permission_denied"] == 0
+    assert inventory["excluded"]["path_rule"] == 2
+    assert sorted(inventory["excluded_paths"]["missing"]) == [
+        "src/dangling.py",
+        "src/ghost.py",
+    ]
+    assert inventory["excluded_paths"]["undecodable"] == ["src/blob.py"]
+    assert inventory["excluded_paths"]["permission_denied"] == []
+
+
+def test_build_inventory_tracks_unsupported_extension_histogram(repo: Path):
+    inventory = build_inventory(repo)
+    assert inventory["unsupported_extensions"] == {".md": 1}
+
+
+def test_build_inventory_records_generated_paths(repo: Path):
+    inventory = build_inventory(repo)
+    assert inventory["excluded_paths"]["generated"] == ["src/gen.py"]
+
+
+def test_build_inventory_counts_untracked_source_files(repo: Path):
+    (repo / "src" / "wip.py").write_text("D = 4\n")
+    inventory = build_inventory(repo)
+    kept = {entry["path"] for entry in inventory["files"]}
+    assert "src/wip.py" not in kept
+    assert inventory["excluded"]["untracked"] == 1
+    assert inventory["excluded_paths"]["untracked"] == ["src/wip.py"]
+    # Untracked files must not perturb the tracked-file counters.
     assert inventory["excluded"]["path_rule"] == 2
 
 

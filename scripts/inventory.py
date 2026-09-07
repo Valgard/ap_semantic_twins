@@ -53,7 +53,7 @@ EXCLUDED_PATH_SEGMENTS = (
     "build",
 )
 
-EXCLUDED_SUFFIXES = (".min.js", ".min.css", ".generated.cs")
+EXCLUDED_SUFFIXES = (".min.js", ".generated.cs")
 
 TEST_PATH_SEGMENTS = ("tests", "test", "spec", "__tests__")
 
@@ -112,9 +112,25 @@ def chunk_plan(
 
 
 def list_source_files(repo: Path) -> list[str]:
-    """Every path git tracks in the repo, relative to its root."""
+    """Every path git tracks in the repo, relative to the directory passed.
+
+    `git -C <dir> ls-files` returns paths relative to `<dir>`, not to the
+    repository root -- the two only coincide when `repo` *is* the root.
+    """
     result = subprocess.run(
         ["git", "-C", str(repo), "ls-files", "-z"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return [path for path in result.stdout.split("\0") if path]
+
+
+def list_untracked_files(repo: Path) -> list[str]:
+    """Every path git sees as untracked and not ignored, same path semantics
+    as `list_source_files`."""
+    result = subprocess.run(
+        ["git", "-C", str(repo), "ls-files", "-z", "--others", "--exclude-standard"],
         capture_output=True,
         text=True,
         check=True,
@@ -129,14 +145,34 @@ def build_inventory(repo: Path, include_tests: bool = False) -> dict:
         "generated": 0,
         "path_rule": 0,
         "unsupported_extension": 0,
-        "unreadable": 0,
+        "untracked": 0,
+        "missing": 0,
+        "undecodable": 0,
+        "permission_denied": 0,
     }
+    excluded_paths: dict[str, list[str]] = {
+        "generated": [],
+        "untracked": [],
+        "missing": [],
+        "undecodable": [],
+        "permission_denied": [],
+    }
+    unsupported_extensions: dict[str, int] = {}
+
+    # Untracked files are a branch-in-progress's most common state, not an
+    # edge case. They are counted and named, never inventoried: silently
+    # summarising code outside the repository's committed state would be a
+    # different surprise than the one this bucket exists to prevent.
+    untracked = list_untracked_files(repo)
+    excluded["untracked"] = len(untracked)
+    excluded_paths["untracked"] = untracked
 
     for rel_path in list_source_files(repo):
         suffix = Path(rel_path).suffix.lower()
         language = SOURCE_EXTENSIONS.get(suffix)
         if language is None:
             excluded["unsupported_extension"] += 1
+            unsupported_extensions[suffix] = unsupported_extensions.get(suffix, 0) + 1
             continue
         if is_excluded_path(rel_path, include_tests):
             excluded["path_rule"] += 1
@@ -144,12 +180,32 @@ def build_inventory(repo: Path, include_tests: bool = False) -> dict:
 
         try:
             text = (repo / rel_path).read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            excluded["unreadable"] += 1
+        except FileNotFoundError:
+            # A dangling symlink or a file that is tracked but has since been
+            # deleted from disk without `git rm` -- both everyday mid-rebase
+            # states. Either way, the path is tracked but has no content.
+            excluded["missing"] += 1
+            excluded_paths["missing"].append(rel_path)
+            continue
+        except PermissionError:
+            excluded["permission_denied"] += 1
+            excluded_paths["permission_denied"].append(rel_path)
+            continue
+        except UnicodeDecodeError:
+            excluded["undecodable"] += 1
+            excluded_paths["undecodable"].append(rel_path)
+            continue
+        except OSError:
+            # Any other OS-level failure (e.g. a broken device or an I/O
+            # error) is treated like a missing file: the content could not
+            # be obtained.
+            excluded["missing"] += 1
+            excluded_paths["missing"].append(rel_path)
             continue
 
         if is_generated(text):
             excluded["generated"] += 1
+            excluded_paths["generated"].append(rel_path)
             continue
 
         line_count = len(text.splitlines())
@@ -167,6 +223,8 @@ def build_inventory(repo: Path, include_tests: bool = False) -> dict:
         "include_tests": include_tests,
         "files": files,
         "excluded": excluded,
+        "excluded_paths": excluded_paths,
+        "unsupported_extensions": unsupported_extensions,
         "totals": {
             "files": len(files),
             "lines": sum(entry["lines"] for entry in files),
