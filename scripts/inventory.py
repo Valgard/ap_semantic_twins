@@ -119,7 +119,12 @@ def list_source_files(repo: Path) -> list[str]:
 def build_inventory(repo: Path, include_tests: bool = False) -> dict:
     """Inventory the source files worth summarising, with a chunking plan."""
     files: list[dict] = []
-    excluded = {"generated": 0, "path_rule": 0, "unsupported_extension": 0}
+    excluded = {
+        "generated": 0,
+        "path_rule": 0,
+        "unsupported_extension": 0,
+        "unreadable": 0,
+    }
 
     for rel_path in list_source_files(repo):
         suffix = Path(rel_path).suffix.lower()
@@ -134,7 +139,7 @@ def build_inventory(repo: Path, include_tests: bool = False) -> dict:
         try:
             text = (repo / rel_path).read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
-            excluded["path_rule"] += 1
+            excluded["unreadable"] += 1
             continue
 
         if is_generated(text):
