@@ -18,6 +18,17 @@ def _agent_dest(home: Path) -> Path:
     return home / ".claude" / "agents" / "semantic-twin-hunter.md"
 
 
+def _tamper(path: Path, content: str) -> None:
+    """Overwrite a deployed destination, refusing to write through a symlink.
+
+    A symlink-mode deployment makes $SKILL_DEST/$AGENT_DEST point into the
+    real repository checkout; a plain write_text() there would follow the
+    link and edit the checkout itself instead of the fake deployment.
+    """
+    assert not path.is_symlink(), f"refusing to write through a symlink: {path}"
+    path.write_text(content)
+
+
 class FakeHome(NamedTuple):
     """A fresh fake `$HOME` plus a helper that invokes install.sh against it."""
 
@@ -62,6 +73,35 @@ def test_symlink_targets_resolve_to_the_repository(fake_home: FakeHome):
     )
 
 
+def test_running_installer_through_the_deployed_symlink_does_not_destroy_it(
+    fake_home: FakeHome,
+):
+    # The single most important test in this file. Before the fix, REPO was
+    # computed with a logical `cd`, so invoking install.sh through the
+    # deployed symlink (the most natural place a user finds it) made REPO
+    # equal to the symlink path itself: `rm -rf "$SKILL_DEST"` then deleted
+    # the deployment, and `ln -sfn "$REPO" "$SKILL_DEST"` recreated it as a
+    # dead, self-referential link -- with exit 0 and a success message.
+    fake_home.run("--mode", "symlink")
+    skill_dest = _skill_dest(fake_home.path)
+    deployed_install_sh = str(skill_dest / "scripts" / "install.sh")
+
+    env = os.environ.copy()
+    env["HOME"] = str(fake_home.path)
+    result = subprocess.run(
+        [deployed_install_sh],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert skill_dest.is_symlink()
+    assert skill_dest.resolve() == REPO_ROOT.resolve()
+    assert (skill_dest / "SKILL.md").exists()
+
+
 def test_copy_mode_deploys_scripts_directory_with_only_inventory(fake_home: FakeHome):
     result = fake_home.run("--mode", "copy")
     assert result.returncode == 0
@@ -83,9 +123,51 @@ def test_check_after_clean_copy_install_exits_zero(fake_home: FakeHome):
     assert result.returncode == 0
 
 
+def test_check_with_requested_mode_matching_deployment_exits_zero(
+    fake_home: FakeHome,
+):
+    fake_home.run("--mode", "copy")
+    result = fake_home.run("--check", "--mode", "copy")
+    assert result.returncode == 0
+
+
+def test_check_flags_mode_mismatch_between_requested_and_deployed(
+    fake_home: FakeHome,
+):
+    fake_home.run("--mode", "symlink")
+    result = fake_home.run("--check", "--mode", "copy")
+    assert result.returncode == 1
+    assert "drift: skill deployed as symlink, copy requested" in result.stderr
+    assert "drift: agent deployed as symlink, copy requested" in result.stderr
+
+
+def test_check_detects_a_symlink_pointing_at_the_wrong_target(fake_home: FakeHome):
+    fake_home.run("--mode", "symlink")
+    skill_dest = _skill_dest(fake_home.path)
+    wrong_target = fake_home.path
+    skill_dest.unlink()
+    skill_dest.symlink_to(wrong_target)
+
+    result = fake_home.run("--check")
+    assert result.returncode == 1
+    assert "drift: skill symlink points to" in result.stderr
+    assert str(wrong_target.resolve()) in result.stderr
+    assert str(REPO_ROOT.resolve()) in result.stderr
+
+
+def test_check_reports_missing_destination_rather_than_differs(fake_home: FakeHome):
+    fake_home.run("--mode", "copy")
+    _agent_dest(fake_home.path).unlink()
+
+    result = fake_home.run("--check")
+    assert result.returncode == 1
+    assert "missing: agent not deployed" in result.stderr
+    assert "differs from the deployed copy" not in result.stderr
+
+
 def test_check_detects_drift_in_deployed_skill_md(fake_home: FakeHome):
     fake_home.run("--mode", "copy")
-    (_skill_dest(fake_home.path) / "SKILL.md").write_text("tampered\n")
+    _tamper(_skill_dest(fake_home.path) / "SKILL.md", "tampered\n")
     result = fake_home.run("--check")
     assert result.returncode == 1
     assert "drift: SKILL.md differs from the deployed copy" in result.stderr
@@ -93,9 +175,7 @@ def test_check_detects_drift_in_deployed_skill_md(fake_home: FakeHome):
 
 def test_check_detects_drift_in_deployed_taxonomy(fake_home: FakeHome):
     fake_home.run("--mode", "copy")
-    (_skill_dest(fake_home.path) / "references" / "taxonomy.md").write_text(
-        "tampered\n"
-    )
+    _tamper(_skill_dest(fake_home.path) / "references" / "taxonomy.md", "tampered\n")
     result = fake_home.run("--check")
     assert result.returncode == 1
     assert "drift: references/ differs from the deployed copy" in result.stderr
@@ -103,17 +183,45 @@ def test_check_detects_drift_in_deployed_taxonomy(fake_home: FakeHome):
 
 def test_check_detects_drift_in_deployed_inventory_script(fake_home: FakeHome):
     fake_home.run("--mode", "copy")
-    (_skill_dest(fake_home.path) / "scripts" / "inventory.py").write_text("tampered\n")
+    _tamper(_skill_dest(fake_home.path) / "scripts" / "inventory.py", "tampered\n")
     result = fake_home.run("--check")
     assert result.returncode == 1
     assert "drift: scripts/inventory.py differs from the deployed copy" in result.stderr
+
+
+def test_check_detects_an_unexpected_file_in_deployed_scripts(fake_home: FakeHome):
+    fake_home.run("--mode", "copy")
+    (_skill_dest(fake_home.path) / "scripts" / "leftover.py").write_text("X = 1\n")
+    result = fake_home.run("--check")
+    assert result.returncode == 1
+    assert "drift: unexpected file in deployed scripts/: leftover.py" in result.stderr
+
+
+def test_check_distinguishes_a_diff_failure_from_ordinary_drift(fake_home: FakeHome):
+    # A file-vs-directory mismatch makes `diff` itself fail (exit 2), which
+    # must not be reported as ordinary content drift (exit 1) -- otherwise a
+    # genuine comparison failure (e.g. a permission error) would be silently
+    # folded into "differs". Using a directory instead of chmod keeps this
+    # reproducible regardless of the user running the tests (root bypasses
+    # permission checks, but not a type mismatch).
+    fake_home.run("--mode", "copy")
+    agent_dest = _agent_dest(fake_home.path)
+    agent_dest.unlink()
+    agent_dest.mkdir()
+    result = fake_home.run("--check")
+    assert result.returncode == 1
+    assert "check failed: could not compare semantic-twin-hunter.md" in result.stderr
+    assert (
+        "drift: semantic-twin-hunter.md differs from the deployed copy"
+        not in result.stderr
+    )
 
 
 def test_check_flags_agent_replaced_after_symlink_install(fake_home: FakeHome):
     fake_home.run("--mode", "symlink")
     agent_dest = _agent_dest(fake_home.path)
     agent_dest.unlink()
-    agent_dest.write_text("tampered\n")
+    _tamper(agent_dest, "tampered\n")
     result = fake_home.run("--check")
     assert result.returncode == 1
     assert (
@@ -131,7 +239,11 @@ def test_empty_home_aborts_and_creates_nothing(fake_home: FakeHome):
     result = fake_home.run("--mode", "copy", home_override="")
     assert result.returncode != 0
     assert "HOME must be set and non-empty" in result.stderr
-    assert list(fake_home.path.iterdir()) == []
+    # With HOME="", the destinations would resolve under "/.claude/...",
+    # outside the fixture's fake home -- asserting the fake home stayed
+    # empty would be vacuously true regardless of what the script did.
+    # Assert the real target path was never created instead.
+    assert not Path("/.claude/skills/semantic-twins").exists()
 
 
 def test_unknown_mode_or_unknown_flag_exits_two(fake_home: FakeHome):
@@ -162,3 +274,17 @@ def test_check_reports_a_broken_symlink_rather_than_not_installed(fake_home: Fak
     assert result.returncode == 1
     assert "not installed" not in result.stderr
     assert "broken symlink" in result.stderr
+    # Naming the destination too: "broken symlink" alone would still pass if
+    # the skill and agent messages were swapped, since both mention it.
+    assert "skill directory" in result.stderr
+
+
+def test_check_reports_a_broken_agent_symlink(fake_home: FakeHome):
+    fake_home.run("--mode", "symlink")
+    agent_dest = _agent_dest(fake_home.path)
+    agent_dest.unlink()
+    agent_dest.symlink_to(fake_home.path / "nonexistent-target")
+
+    result = fake_home.run("--check")
+    assert result.returncode == 1
+    assert "drift: semantic-twin-hunter.md is a broken symlink" in result.stderr

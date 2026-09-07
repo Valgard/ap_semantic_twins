@@ -12,8 +12,5 @@ __pycache__/
 *.pyc
 .venv/
 
-# Isolated worktrees
-.worktrees/
-
 # Subagent-driven development scratch (ledger, briefs, review packages)
 .superpowers/
