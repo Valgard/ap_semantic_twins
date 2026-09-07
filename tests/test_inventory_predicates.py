@@ -71,6 +71,45 @@ def test_ordinary_source_path_is_kept():
     )
 
 
+@pytest.mark.parametrize(
+    "rel_path",
+    [
+        "src/latest/Foo.cs",
+        "lib/protest/x.rb",
+        "src/contest/Entry.py",
+        "app/Specimen.php",
+        "src/redist/pack.js",
+    ],
+)
+def test_words_containing_an_exclusion_term_are_not_excluded(rel_path):
+    """A path segment or stem token only matching by substring must survive.
+
+    ``latest``, ``protest`` and ``contest`` all end in ``test``; ``Specimen``
+    starts with ``spec``; ``redist`` ends in ``dist``. None of them equal the
+    exclusion term as a whole segment or token.
+    """
+    assert is_excluded_path(rel_path, include_tests=False) is False
+
+
+@pytest.mark.parametrize(
+    "rel_path",
+    [
+        "src/build/Builder.cs",
+        "core/dist/x.py",
+        "src/Pricing/NetCalculatorTest.cs",
+        "web/__tests__/a.js",
+    ],
+)
+def test_genuine_matches_stay_excluded(rel_path):
+    """Boundary matching must not stop filtering real build output or tests.
+
+    ``build`` and ``dist`` are whole path segments here, not substrings of a
+    longer word, so they still match. The CamelCase suffix and the
+    ``__tests__`` directory keep matching too.
+    """
+    assert is_excluded_path(rel_path, include_tests=False) is True
+
+
 def test_short_file_is_a_single_chunk():
     assert chunk_plan(120) == [(1, 120)]
 

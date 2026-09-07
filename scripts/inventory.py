@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -43,20 +44,20 @@ GENERATED_MARKERS = (
 
 GENERATED_HEADER_LINES = 20
 
-EXCLUDED_PATH_PARTS = (
-    "vendor/",
-    "node_modules/",
-    "migrations/",
-    "__snapshots__/",
-    "dist/",
-    "build/",
+EXCLUDED_PATH_SEGMENTS = (
+    "vendor",
+    "node_modules",
+    "migrations",
+    "__snapshots__",
+    "dist",
+    "build",
 )
 
 EXCLUDED_SUFFIXES = (".min.js", ".min.css", ".generated.cs")
 
-TEST_PATH_PARTS = ("tests/", "test/", "spec/", "__tests__/")
+TEST_PATH_SEGMENTS = ("tests", "test", "spec", "__tests__")
 
-TEST_NAME_MARKERS = ("test", "spec")
+TEST_NAME_MARKERS = ("test", "tests", "spec", "specs")
 
 
 def is_generated(head: str) -> bool:
@@ -66,24 +67,24 @@ def is_generated(head: str) -> bool:
 
 
 def _looks_like_test(rel_path: str) -> bool:
-    lowered = rel_path.lower()
-    if any(part in lowered for part in TEST_PATH_PARTS):
+    segments = rel_path.lower().split("/")
+    if any(segment in TEST_PATH_SEGMENTS for segment in segments):
         return True
-    stem = lowered.rsplit("/", 1)[-1].rsplit(".", 1)[0]
-    for marker in TEST_NAME_MARKERS:
-        if stem.startswith(marker) or stem.endswith((marker, marker + "s")):
-            return True
-        if f".{marker}" in stem:
-            return True
-    return False
+    # CamelCase suffix convention, checked against the unmodified stem before
+    # lower-casing: NetCalculatorTest.cs is a test file, latest.py is not.
+    stem = Path(rel_path).stem
+    if stem.endswith(("Test", "Tests")):
+        return True
+    tokens = re.split(r"[._-]", stem.lower())
+    return any(token in TEST_NAME_MARKERS for token in tokens)
 
 
 def is_excluded_path(rel_path: str, include_tests: bool) -> bool:
     """True when a path is excluded by convention rather than by content."""
-    lowered = rel_path.lower()
-    if any(part in lowered for part in EXCLUDED_PATH_PARTS):
+    segments = rel_path.lower().split("/")
+    if any(segment in EXCLUDED_PATH_SEGMENTS for segment in segments):
         return True
-    if lowered.endswith(EXCLUDED_SUFFIXES):
+    if rel_path.lower().endswith(EXCLUDED_SUFFIXES):
         return True
     return not include_tests and _looks_like_test(rel_path)
 
