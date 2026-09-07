@@ -41,11 +41,27 @@ if [ "$check_only" -eq 1 ]; then
     # Judging them together lets a symlinked skill vouch for a stale agent copy.
     if [ -L "$SKILL_DEST" ]; then
         echo "skill: symlink, cannot drift"
-    elif diff -rq "$REPO/SKILL.md" "$SKILL_DEST/SKILL.md" >/dev/null 2>&1; then
-        echo "skill: copy in sync"
     else
-        echo "drift: SKILL.md differs from the deployed copy" >&2
-        status=1
+        if diff -rq "$REPO/SKILL.md" "$SKILL_DEST/SKILL.md" >/dev/null 2>&1; then
+            echo "skill: copy in sync"
+        else
+            echo "drift: SKILL.md differs from the deployed copy" >&2
+            status=1
+        fi
+
+        if diff -rq "$REPO/references" "$SKILL_DEST/references" >/dev/null 2>&1; then
+            echo "references: copy in sync"
+        else
+            echo "drift: references/ differs from the deployed copy" >&2
+            status=1
+        fi
+
+        if diff -q "$REPO/scripts/inventory.py" "$SKILL_DEST/scripts/inventory.py" >/dev/null 2>&1; then
+            echo "scripts: copy in sync"
+        else
+            echo "drift: scripts/inventory.py differs from the deployed copy" >&2
+            status=1
+        fi
     fi
 
     if [ -L "$AGENT_DEST" ]; then
@@ -67,10 +83,10 @@ if [ "$mode" = symlink ]; then
     ln -sfn "$REPO" "$SKILL_DEST"
     ln -sfn "$REPO/agents/semantic-twin-hunter.md" "$AGENT_DEST"
 else
-    mkdir -p "$SKILL_DEST"
+    mkdir -p "$SKILL_DEST" "$SKILL_DEST/scripts"
     cp "$REPO/SKILL.md" "$SKILL_DEST/SKILL.md"
     cp -R "$REPO/references" "$SKILL_DEST/references"
-    cp -R "$REPO/scripts" "$SKILL_DEST/scripts"
+    cp "$REPO/scripts/inventory.py" "$SKILL_DEST/scripts/inventory.py"
     cp "$REPO/agents/semantic-twin-hunter.md" "$AGENT_DEST"
 fi
 
