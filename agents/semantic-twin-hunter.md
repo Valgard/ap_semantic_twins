@@ -69,7 +69,7 @@ entry points agree on what counts:
   `@generated`, `DO NOT EDIT`
 - paths with a `vendor`, `node_modules`, `migrations`, `__snapshots__`, `dist` or `build`
   segment
-- minified bundles (`*.min.js`, `*.min.css`)
+- minified bundles (`*.min.js`, `*.min.css`) and sources named `*.generated.cs`
 - test files, unless the caller asked for them
 
 Say in your report how many units you dropped this way and why. A unit excluded silently is
