@@ -33,6 +33,11 @@ Read the `totals` and `excluded` counts and state them. If `totals.files` is zer
 and report why — an empty inventory means every file was filtered, not that the project
 is clean.
 
+The inventory's `repo` field holds the absolute audit root; every `files[].path` is relative
+to it. Note that root now: each `path` you hand to a stage 2 or stage 4 subagent must be the
+root joined with it, because those subagents do not share your working directory. Paths
+quoted back in the report stay relative — they are for a human reading about their own repo.
+
 ## Stage 2 — Purpose extraction
 
 For each entry in `files`, dispatch one **`haiku`** subagent per chunk. Run them in
