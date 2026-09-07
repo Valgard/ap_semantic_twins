@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
@@ -235,11 +236,19 @@ def test_check_detects_drift_in_deployed_inventory_script(fake_home: FakeHome):
 
 
 def test_check_detects_an_unexpected_file_in_deployed_scripts(fake_home: FakeHome):
+    # Plants both a visible and a hidden leftover. Without `shopt -s dotglob`
+    # in install.sh's --check comparison, the glob that walks the deployed
+    # scripts/ directory never matches the dotfile at all, so its drift line
+    # never gets a chance to print -- a test that only plants the visible
+    # leftover.py cannot tell dotglob apart from no dotglob.
+    scripts_dir = _skill_dest(fake_home.path) / "scripts"
     fake_home.run("--mode", "copy")
-    (_skill_dest(fake_home.path) / "scripts" / "leftover.py").write_text("X = 1\n")
+    scripts_dir.joinpath("leftover.py").write_text("X = 1\n")
+    scripts_dir.joinpath(".leftover.py").write_text("Y = 1\n")
     result = fake_home.run("--check")
     assert result.returncode == 1
     assert "drift: unexpected file in deployed scripts/: leftover.py" in result.stderr
+    assert "drift: unexpected file in deployed scripts/: .leftover.py" in result.stderr
 
 
 def test_check_distinguishes_a_diff_failure_from_ordinary_drift(fake_home: FakeHome):
@@ -272,6 +281,32 @@ def test_check_flags_agent_replaced_after_symlink_install(fake_home: FakeHome):
     assert (
         "drift: semantic-twin-hunter.md differs from the deployed copy" in result.stderr
     )
+
+
+def test_check_normalises_a_symlink_target_reached_through_a_non_physical_path(
+    fake_home: FakeHome,
+):
+    # resolve_file_symlink runs the agent symlink's target directory through
+    # `cd -P`/`pwd -P`, the same physical resolution $REPO already went
+    # through, so a target recorded via a non-physical route still compares
+    # equal to $REPO. macOS's /tmp -> /private/tmp is the real-world case
+    # named in install.sh's own comment: reproduce it by placing an alias
+    # symlink directly under /tmp that points at this repository's agents/
+    # directory, then recording the deployed agent symlink's target through
+    # that alias instead of through $REPO directly.
+    fake_home.run("--mode", "symlink")
+    agent_dest = _agent_dest(fake_home.path)
+    agent_dest.unlink()
+
+    alias = Path("/tmp") / f"semantic-twins-agent-alias-{uuid.uuid4().hex}"
+    alias.symlink_to(REPO_ROOT / "agents")
+    try:
+        agent_dest.symlink_to(alias / "semantic-twin-hunter.md")
+        result = fake_home.run("--check")
+        assert result.returncode == 0
+        assert "agent: symlink, cannot drift" in result.stdout
+    finally:
+        alias.unlink()
 
 
 def test_check_with_nothing_installed_reports_not_installed(fake_home: FakeHome):
