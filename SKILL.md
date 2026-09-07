@@ -150,6 +150,10 @@ would disappear if the twins were merged into the largest one. Write it as an es
 because it is one: a consolidation that needs a new shared abstraction saves less than the
 arithmetic suggests.
 
+The paths reaching you from stages 3 and 4 are absolute, because that is what you handed the
+subagents. Strip the audit root back off before writing the report: a reader wants
+`src/Pricing/NetCalculator.cs:42`, not an absolute path from someone else's machine.
+
 Report defects before debt. Do not propose the refactoring itself: merging two twins is an
 architecture and product decision, and across a bounded-context boundary duplication is
 frequently correct.
