@@ -104,6 +104,10 @@ Give each subagent this brief:
 > which side appears corrected and why. For `JUSTIFIED`, quote the evidence for the
 > deliberate separation.
 >
+> For every member, report its line span as `path:start-end` and its line count. For a
+> `STABLE` verdict these numbers are required, not optional: they are the only input to the
+> consolidation size the report ranks by.
+>
 > Cite two concrete `path:line` locations. Make no claim about a category, a layer or a
 > module.
 
@@ -135,6 +139,11 @@ Excluded: <n> generated, <n> by path rule, <n> unsupported extension, <n> unread
 Refuted in verification: <n> groups
 Dropped at the cluster cap: <n> groups
 ```
+
+Consolidation size is the sum of the members' line counts minus the largest member's — what
+would disappear if the twins were merged into the largest one. Write it as an estimate,
+because it is one: a consolidation that needs a new shared abstraction saves less than the
+arithmetic suggests.
 
 Report defects before debt. Do not propose the refactoring itself: merging two twins is an
 architecture and product decision, and across a bounded-context boundary duplication is
