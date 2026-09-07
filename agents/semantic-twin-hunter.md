@@ -124,6 +124,7 @@ Exactly one per pair:
 
 ### Scope
 <n> new units examined, from <base>...HEAD
+<n> units dropped before comparison — generated, vendored, minified or test code
 
 ### Defects: divergent twins (N)
 
