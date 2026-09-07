@@ -134,7 +134,7 @@ Divergence outranks size. Every finding names two concrete locations.
 | 4 — verification | inherit | Judgement work against real source. Under-powering the only stage that can refute would defeat its purpose. |
 
 Stage 3 ranks clusters by confidence, and the orchestrator verifies them in batches with a
-cap (default 40 clusters per run, `--max-clusters` to raise it). Without a cap, one noisy
+cap (default 40 clusters per run, or a higher cap the caller named). Without a cap, one noisy
 clustering pass fans out into hundreds of verification agents.
 
 ## 4. Finding taxonomy
