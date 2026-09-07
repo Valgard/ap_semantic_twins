@@ -91,4 +91,9 @@ else
 fi
 
 echo "installed in $mode mode"
+
+if [ "$mode" = symlink ]; then
+    echo "add /agents/semantic-twin-hunter.md to ~/.claude/.gitignore: ~/.claude/agents/ is tracked, and this symlink is machine-specific"
+fi
+
 echo "restart Claude Code, then run /semantic-twins"

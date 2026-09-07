@@ -17,6 +17,9 @@ Two entry points, one method:
 ./scripts/install.sh --check  # report drift in copy mode
 ```
 
+After a symlink install, add `/agents/semantic-twin-hunter.md` to `~/.claude/.gitignore` —
+`~/.claude/agents/` is tracked, and this symlink is machine-specific.
+
 Restart Claude Code afterwards — skills and agents are discovered at session start.
 
 ## Layout
