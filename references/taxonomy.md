@@ -35,10 +35,6 @@ Recognise it by:
 This outcome is the condition for the tool being used at all. Without a legitimate "this is
 fine" verdict the report becomes a wall of noise and is ignored after two runs.
 
-## `GENERATED` — out of scope
-
-Generated code, migrations, fixtures. Excluded before verification; counted only.
-
 ## `NOT_A_TWIN` — refuted
 
 Verification found a reason the two are not the same thing. Appears only in the tally.
@@ -46,10 +42,17 @@ Verification found a reason the two are not the same thing. Appears only in the 
 Expect a lot of these, and treat that as the system working. Summaries agree easily where
 source does not: "validates user input" describes dozens of unrelated functions.
 
+# Pre-verification exclusion
+
+## `GENERATED` — out of scope
+
+Generated code, migrations, fixtures. Excluded before verification; counted only. It never
+reaches verification, so it is not one of the four outcomes above.
+
 # Ranking
 
-`DIVERGENT` before `STABLE`, and within each group, larger before smaller. A drifted twin
-is a latent bug; a stable twin is maintenance load and nothing worse.
+`DIVERGENT` before `STABLE`, and within each group, larger before smaller in audit mode. A
+drifted twin is a latent bug; a stable twin is maintenance load and nothing worse.
 
 # What a finding may claim
 

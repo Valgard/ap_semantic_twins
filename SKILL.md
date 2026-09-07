@@ -7,8 +7,8 @@ description: Use when hunting for semantic twins — type-4 clones, meaning func
 
 Announce at start: "Using semantic-twins to audit <path> for type-4 clones."
 
-Read `references/taxonomy.md` before stage 4. It defines the five outcomes and what a
-finding may claim.
+Read `references/taxonomy.md` before stage 4. It defines four verification outcomes plus
+one pre-verification exclusion, and what a finding may claim.
 
 ## What this is for
 
@@ -82,8 +82,8 @@ Two units in the same group need not be in the same language or layer. A twin th
 module boundaries is the most valuable kind — two people solved the same problem without
 knowing about each other.
 
-Sort groups by confidence, descending. Take the top **40** (or `--max-clusters` if the user
-raised it). State how many groups you dropped at the cap.
+Sort groups by confidence, descending. Take the top **40** (or a higher cap the caller
+named). State how many groups you dropped at the cap.
 
 If the index exceeds roughly 20,000 units it no longer fits one context. Then partition it
 by top-level directory, cluster each partition separately, and run a second pass over the
