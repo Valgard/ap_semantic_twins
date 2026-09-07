@@ -14,7 +14,7 @@ Two entry points, one method:
 
 ```bash
 ./scripts/install.sh          # symlink by default, --mode copy for a copy
-./scripts/install.sh --check  # report drift in copy mode
+./scripts/install.sh --check  # report drift, broken or misdirected links, and unexpected files
 ```
 
 After a symlink install, add `/agents/semantic-twin-hunter.md` to `~/.claude/.gitignore` —
@@ -33,6 +33,12 @@ Restart Claude Code afterwards — skills and agents are discovered at session s
 | `scripts/install.sh` | Deployment into `~/.claude` |
 | `tests/fixtures/twin-corpus/` | Acceptance corpus, one planted case per outcome |
 | `tests/ACCEPTANCE.md` | Expected verdicts for that corpus |
+| `tests/test_acceptance_anchors.py` | Pins every `path:line` anchor in `ACCEPTANCE.md` to a real definition |
+| `tests/test_inventory_*.py` | Unit and corpus tests for `scripts/inventory.py` |
+| `tests/test_install.py` | Subprocess-driven tests for `scripts/install.sh` |
+| `tests/conftest.py` | Shared pytest fixtures |
+| `pytest.ini` | pytest configuration |
+| `pyproject.toml` / `uv.lock` | Dev tooling: pytest, ruff, vulture |
 | `docs/specs/` | The design this implements |
 
 ## Development
