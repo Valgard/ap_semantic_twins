@@ -3,6 +3,8 @@
 # The repo stays the source of truth in both modes.
 set -euo pipefail
 
+: "${HOME:?HOME must be set and non-empty}"
+
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SKILL_DEST="$HOME/.claude/skills/semantic-twins"
 AGENT_DEST="$HOME/.claude/agents/semantic-twin-hunter.md"
@@ -28,20 +30,33 @@ if [ "$mode" != symlink ] && [ "$mode" != copy ]; then
 fi
 
 if [ "$check_only" -eq 1 ]; then
-    status=0
-    if [ -L "$SKILL_DEST" ] || [ -L "$AGENT_DEST" ]; then
-        echo "mode: symlink — always in sync"
-        exit 0
+    if [ ! -e "$SKILL_DEST" ] && [ ! -e "$AGENT_DEST" ]; then
+        echo "not installed" >&2
+        exit 1
     fi
-    if ! diff -rq "$REPO/SKILL.md" "$SKILL_DEST/SKILL.md" >/dev/null 2>&1; then
+
+    status=0
+
+    # Each destination is judged on its own. A symlink cannot drift; a copy can.
+    # Judging them together lets a symlinked skill vouch for a stale agent copy.
+    if [ -L "$SKILL_DEST" ]; then
+        echo "skill: symlink, cannot drift"
+    elif diff -rq "$REPO/SKILL.md" "$SKILL_DEST/SKILL.md" >/dev/null 2>&1; then
+        echo "skill: copy in sync"
+    else
         echo "drift: SKILL.md differs from the deployed copy" >&2
         status=1
     fi
-    if ! diff -q "$REPO/agents/semantic-twin-hunter.md" "$AGENT_DEST" >/dev/null 2>&1; then
+
+    if [ -L "$AGENT_DEST" ]; then
+        echo "agent: symlink, cannot drift"
+    elif diff -q "$REPO/agents/semantic-twin-hunter.md" "$AGENT_DEST" >/dev/null 2>&1; then
+        echo "agent: copy in sync"
+    else
         echo "drift: semantic-twin-hunter.md differs from the deployed copy" >&2
         status=1
     fi
-    [ "$status" -eq 0 ] && echo "in sync"
+
     exit "$status"
 fi
 
