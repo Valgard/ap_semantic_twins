@@ -46,13 +46,15 @@ source does not: "validates user input" describes dozens of unrelated functions.
 
 ## `GENERATED` — out of scope
 
-Generated code, migrations, fixtures. Excluded before verification; counted only. It never
-reaches verification, so it is not one of the four outcomes above.
+Generated code and migrations. Snapshots and minified bundles fall under the same
+pre-verification exclusion. Excluded before verification; counted only. It never reaches
+verification, so it is not one of the four outcomes above.
 
 # Ranking
 
-`DIVERGENT` before `STABLE`, and within each group, larger before smaller in audit mode. A
-drifted twin is a latent bug; a stable twin is maintenance load and nothing worse.
+`DIVERGENT` before `STABLE`. Within the `STABLE` section in audit mode, larger
+consolidation first. A drifted twin is a latent bug; a stable twin is maintenance load and
+nothing worse.
 
 # What a finding may claim
 
