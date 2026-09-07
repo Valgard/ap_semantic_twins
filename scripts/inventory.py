@@ -6,6 +6,12 @@ plans how to chunk the long ones. Standard library only.
 
 from __future__ import annotations
 
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+
 SOURCE_EXTENSIONS: dict[str, str] = {
     ".c": "c",
     ".cpp": "cpp",
@@ -97,3 +103,94 @@ def chunk_plan(
             break
         start = end - overlap + 1
     return chunks
+
+
+def list_source_files(repo: Path) -> list[str]:
+    """Every path git tracks in the repo, relative to its root."""
+    result = subprocess.run(
+        ["git", "-C", str(repo), "ls-files", "-z"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return [path for path in result.stdout.split("\0") if path]
+
+
+def build_inventory(repo: Path, include_tests: bool = False) -> dict:
+    """Inventory the source files worth summarising, with a chunking plan."""
+    files: list[dict] = []
+    excluded = {"generated": 0, "path_rule": 0, "unsupported_extension": 0}
+
+    for rel_path in list_source_files(repo):
+        suffix = Path(rel_path).suffix.lower()
+        language = SOURCE_EXTENSIONS.get(suffix)
+        if language is None:
+            excluded["unsupported_extension"] += 1
+            continue
+        if is_excluded_path(rel_path, include_tests):
+            excluded["path_rule"] += 1
+            continue
+
+        try:
+            text = (repo / rel_path).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            excluded["path_rule"] += 1
+            continue
+
+        if is_generated(text):
+            excluded["generated"] += 1
+            continue
+
+        line_count = len(text.splitlines())
+        files.append(
+            {
+                "path": rel_path,
+                "language": language,
+                "lines": line_count,
+                "chunks": [list(chunk) for chunk in chunk_plan(line_count)],
+            }
+        )
+
+    return {
+        "repo": str(repo.resolve()),
+        "include_tests": include_tests,
+        "files": files,
+        "excluded": excluded,
+        "totals": {
+            "files": len(files),
+            "lines": sum(entry["lines"] for entry in files),
+            "chunks": sum(len(entry["chunks"]) for entry in files),
+        },
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Inventory a repository's source files for semantic twin detection."
+    )
+    parser.add_argument("repo", help="path to the git repository to inventory")
+    parser.add_argument(
+        "--include-tests",
+        action="store_true",
+        help="inventory the test corpus instead of skipping it",
+    )
+    args = parser.parse_args(argv)
+
+    repo = Path(args.repo)
+    probe = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--is-inside-work-tree"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if probe.returncode != 0:
+        print(f"{repo} is not a git repository", file=sys.stderr)
+        return 1
+
+    json.dump(build_inventory(repo, args.include_tests), sys.stdout, indent=2)
+    print()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
