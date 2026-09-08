@@ -74,6 +74,13 @@ Filters:
 - files that cannot be read or decoded are counted in their own bucket, never folded into the
   path-convention count. A binary or mis-encoded source file is excluded for a reason that has
   nothing to do with its name, and a count that conflates the two hides it
+- a tracked symlink is counted and named, never followed — it duplicates whatever it points
+  at, and following one that escapes the repository would inventory foreign code as if it
+  were repository source
+- a gitlink (a submodule reference) is counted and named, never treated as a file with an
+  unsupported extension — it has no blob content of its own, only a commit reference in
+  another repository, so it is diverted before the extension check would otherwise misfile
+  it as just another extensionless file
 - tests excluded by default. `--include-tests` runs them as a separate corpus, because
   test twins are judged by a different standard — shared fixtures and parallel builders
   are not debt
@@ -81,15 +88,29 @@ Filters:
 Output is JSON: the file list with per-file line counts and chunking plans, plus three
 accounting structures that make what got dropped visible instead of buried:
 
-- `excluded` — a counter per exclusion reason: `generated`, `path_rule`,
-  `unsupported_extension`, `untracked`, `missing`, `undecodable`, `permission_denied`
+- `excluded` — a counter per exclusion reason, nine in total: `path_rule`,
+  `unsupported_extension`, `generated`, `symlink`, `submodule`, `untracked`, `missing`,
+  `undecodable`, `permission_denied`. `symlink` and `submodule` are their own reasons, not
+  folded into `path_rule` or `missing`: a tracked symlink duplicates whatever it points at
+  and is never followed, and a gitlink (a submodule reference) has no blob content to read
+  in the first place
 - `excluded_paths` — the subset of those reasons that name individual files rather than
-  only counting them (`generated`, `untracked`, `missing`, `undecodable`,
-  `permission_denied`; `path_rule` and `unsupported_extension` are counted only), so a
-  caller can act on which files were dropped, not only how many
+  only counting them, seven of the nine (`generated`, `symlink`, `submodule`, `untracked`,
+  `missing`, `undecodable`, `permission_denied`; `path_rule` and `unsupported_extension` are
+  counted only, since there is no single file to name for a whole extension bucket or
+  naming-convention rule), so a caller can act on which files were dropped, not only how many
 - `unsupported_extensions` — a histogram of the extensions actually seen but outside the
-  whitelist, keyed by extension with `""` for a file with none, so a language the tool
-  should plausibly support but doesn't becomes visible instead of vanishing into one count
+  whitelist, keyed by extension with the literal label `(no extension)` for a file with
+  none — distinct from the dedicated `submodule` bucket a gitlink lands in instead, since a
+  gitlink's path also has no suffix — so a language the tool should plausibly support but
+  doesn't becomes visible instead of vanishing into one count
+
+`totals.tracked` is the count `git ls-files` returned, and it guards a conservation
+property: `totals.tracked` equals `totals.files` plus every `excluded` counter except
+`untracked` — every tracked path lands in exactly one of the kept-files list or one of the
+eight tracked-path exclusion reasons. `untracked` sits outside that identity on purpose: it
+comes from a separate git invocation (`git ls-files --others --exclude-standard`) and was
+never part of the tracked set `totals.tracked` counts.
 
 Files over 800 lines are split into overlapping blocks so no unit is cut in half.
 
@@ -103,11 +124,15 @@ unit:
 
 ```json
 {"file": "src/Pricing/NetCalculator.cs", "line": 42, "name": "ToNetMinorUnits",
- "kind": "method",
+ "kind": "method", "owner": "NetCalculator",
  "purpose": "converts a gross price with a tax rate into net minor units, rounding half-up",
  "inputs": "decimal gross, decimal taxRate", "outputs": "long",
  "effects": "none", "invariants": "throws on a negative tax rate"}
 ```
+
+`owner` names the class or type the unit is a member of — the nearest enclosing one when a
+file declares more than one, or `none` for a unit with no enclosing class, including a class
+or type unit itself. Stage 3's containment-collapse rule (below) reads this field directly.
 
 Enumeration and comprehension collapse into a single step, which removes the parser
 dependency altogether. universal-ctags is not installed on the target machine
@@ -127,6 +152,14 @@ counted **after** a single re-dispatch of anything that came back empty on the f
 A chunk still empty after that re-dispatch is named by `path:range` in the report rather
 than silently dropped — a lost chunk and a chunk that genuinely defines nothing are
 different outcomes, and only one of them is fine.
+
+**The dispatch count is anchored, not merely reconciled.** The orchestrator compares how
+many chunks it actually dispatched against `totals.chunks` from stage 1's inventory — the
+one number in the pipeline a script measured rather than a model recalling how its own
+dispatch loop went. A shortfall (a context limit, a budget, a broken batch chain) is stated
+in the report rather than absorbed quietly, so their absence is never read as a claim of
+completeness. This is a conformance requirement, not an implementation detail: dropping it
+in a future rewrite is exactly the silent regression the anchor exists to prevent.
 
 ### Stage 3 — Clustering (exactly one call, large context)
 
@@ -156,10 +189,22 @@ corrected one.
 ### Stage 5 — Report (orchestrator)
 
 Reconciles verification the same way stage 2's chunks were reconciled: the four verdict
-counts (`DIVERGENT` + `STABLE` + `JUSTIFIED` + `NOT_A_TWIN`) must sum to the number of
-groups dispatched to stage 4. Any shortfall is a verification dispatch that came back
-empty, reported as its own line rather than folded into whichever total is convenient — a
-failed stage 4 call must not be indistinguishable from a group that never existed.
+counts plus `UNREADABLE` (`DIVERGENT` + `STABLE` + `JUSTIFIED` + `NOT_A_TWIN` +
+`UNREADABLE`) must sum to the number of groups dispatched to stage 4. Any shortfall is a
+verification dispatch that came back empty, reported as its own line rather than folded
+into whichever total is convenient — a failed stage 4 call must not be indistinguishable
+from a group that never existed.
+
+**The dispatched-to-stage-4 count is itself computed, not recalled.** It is candidate
+groups (stage 3's count, before the cap) minus however many were dropped at the cap — both
+numbers already required in the report — so it is anchored on numbers fixed at stage 3, not
+on how stage 4's dispatch loop felt like it went. This anchor is weaker than stage 2's:
+there is no script-measured number for groups the way `totals.chunks` measures chunks, so
+the candidate-group count is self-reported. What holds it steady instead is sequencing —
+stage 3 finishes and this count is fixed before stage 4 ever dispatches, so a stage 4
+failure cannot shrink it in sympathy. Like the stage 2 anchor, this is a conformance
+requirement: a rewrite that lets stage 5 recall the dispatched count from memory instead of
+computing it loses the property the anchor exists for.
 
 Divergence outranks size. Every finding cites a concrete `path:line` for each member — two
 for a pair, one per member for a larger group.
@@ -178,8 +223,8 @@ clustering pass fans out into hundreds of verification agents.
 
 ## 4. Finding taxonomy
 
-Four verification outcomes, plus one pre-verification exclusion that never reaches
-verification at all:
+Four verification outcomes, one pre-verification exclusion that never reaches verification
+at all, and one verification-time escape hatch that is neither:
 
 | Outcome | Meaning | Treatment |
 | --- | --- | --- |
@@ -188,9 +233,36 @@ verification at all:
 | `JUSTIFIED` | Deliberately separate: bounded contexts, layer isolation, anti-corruption layer | Named, not counted as a finding |
 | `NOT_A_TWIN` | Refuted in stage 4 | Appears only in the tally |
 
-**`GENERATED`** — generated code, a migration, a snapshot, or a minified bundle. Excluded
-before verification, counted only. It is not a fifth outcome alongside the four above: it
-never reaches stage 4 to be judged against them.
+**`GENERATED`** names two different things under one label — `references/taxonomy.md` is
+the source of truth for both; restated here because it now conflicts with an older,
+single-state version of this section.
+
+- **Out of scope** — the audit's stage 1 exclusion. Everything `inventory.py`'s content and
+  path rules filter out before a file ever reaches stage 2: an auto-generated marker in its
+  first lines, a `vendor`, `node_modules`, `migrations`, `__snapshots__`, `dist` or `build`
+  path segment, and minified or `*.generated.cs`-suffixed files. Excluded before
+  verification, counted only. It never reaches stage 4, so it is not a fifth outcome
+  alongside the four above.
+- **Suppressed after verification, agent-only** — a different thing than the state above,
+  sharing only the label. This is the `semantic-twin-hunter` agent's diff-mode state, not
+  the audit's: a candidate on the existing-code side whose location is generated, vendored
+  or minified *was* searched, found and verified like any other candidate — it has a real
+  outcome from the four above — but a `STABLE` or `JUSTIFIED` verdict against it is
+  withheld from the findings, because the duplicate side is not something anyone can act
+  on: it is regenerated or overwritten on the next build. A `DIVERGENT` verdict against
+  such a location is not withheld — a behavioural drift in the new code is actionable even
+  when the other side is generated. Counted in the "Checked and refuted" block's excluded
+  line, not in a finding section.
+
+**`UNREADABLE`** is a stage 4 escape hatch, not a verdict and not one of the four outcomes
+above: a cited location that could not be read (a wrong path, a deleted file, or content
+that no longer matches what stage 3 clustered). The subagent found no evidence at all, not
+a reason the two units differ, so it must not be counted as a health signal the way a
+`NOT_A_TWIN` refutation is — the same kind of escape stage 2's `"purpose": "unclear"` is,
+scoped to verification instead of extraction. It is included in stage 5's verdict-sum
+reconciliation above and reported in its own Coverage line, but is not one of the four rows
+in the outcome table, and `references/taxonomy.md` does not carry it either — it is a
+property of stage 4's dispatch, not of the taxonomy the finding sections are organised by.
 
 `JUSTIFIED` is not politeness, it is the condition for the tool being used at all.
 Without a legitimate "this is fine" outcome, the report becomes a wall of noise and is
@@ -214,6 +286,12 @@ the units the change adds, so no index is needed. Purpose sentences for the new 
 become search terms against the codebase (concept words, involved types, callers),
 followed by the same adversarial check. It answers: does what this change adds already
 exist here?
+
+The agent reconciles its own scope the way the audit reconciles stage 2 and stage 5: every
+examined unit must land in exactly one outcome — reported, refuted, excluded, or no
+candidate found — and the count of units examined must equal dropped plus those four
+buckets. This is the same closure rule, applied to the agent's asymmetric left-hand side
+instead of the audit's whole-project index.
 
 The two differ in the left-hand comparison set, not in method. Building two agents for
 them would plant a semantic twin inside the twin detector.
@@ -278,6 +356,6 @@ The deliverable is mostly prompts, which are not unit-testable. What is testable
   Ordinary TDD.
 - The pipeline end to end, against a fixture repository carrying planted twins of each
   taxonomy class: a divergent pair, a stable pair, a justified cross-context pair, a
-  generated-code decoy, and a near-miss that must be refuted. A run that fails to report
-  the divergent pair, or that reports the justified pair as a finding, is a regression.
-  This fixture is the only meaningful acceptance test for the prompt stages.
+  generated-code decoy, and a near-miss that must not be reported as a twin. A run that
+  fails to report the divergent pair, or that reports the justified pair as a finding, is a
+  regression. This fixture is the only meaningful acceptance test for the prompt stages.
