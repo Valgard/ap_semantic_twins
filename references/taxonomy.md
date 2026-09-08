@@ -42,13 +42,31 @@ Verification found a reason the two are not the same thing. Appears only in the 
 Expect a lot of these, and treat that as the system working. Summaries agree easily where
 source does not: "validates user input" describes dozens of unrelated functions.
 
-# Pre-verification exclusion
+# Excluded before verification
 
 ## `GENERATED` — out of scope
 
-Generated code and migrations. Snapshots and minified bundles fall under the same
-pre-verification exclusion. Excluded before verification; counted only. It never reaches
-verification, so it is not one of the four outcomes above.
+The audit's stage 1 exclusion. Everything `inventory.py`'s content and path rules filter out
+before a file ever reaches stage 2: an auto-generated marker in its first lines, a `vendor`,
+`node_modules`, `migrations`, `__snapshots__`, `dist` or `build` path segment, and minified
+or `*.generated.cs`-suffixed files. See `inventory.py` for the exact rule set rather than
+this summary, which will drift out of sync with it if the rules change. Excluded before
+verification; counted only. It never reaches verification, so it is not one of the four
+outcomes above.
+
+# Suppressed after verification
+
+## `GENERATED`, agent-only — verified, then withheld
+
+A different thing than the state above, sharing only the label. This is the
+`semantic-twin-hunter` agent's diff-mode state, not the audit's: a candidate on the
+existing-code side whose location is generated, vendored or minified *was* searched, found
+and verified like any other candidate — it has a real outcome from the four above — but a
+`STABLE` or `JUSTIFIED` verdict against it is withheld from the findings, because the
+duplicate side is not something anyone can act on: it is regenerated or overwritten on the
+next build. A `DIVERGENT` verdict against such a location is not withheld — a behavioural
+drift in the new code is actionable even when the other side is generated. Counted in the
+"Checked and refuted" block's excluded line, not in a finding section.
 
 # Ranking
 
