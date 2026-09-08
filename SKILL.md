@@ -262,9 +262,9 @@ Dispatch one subagent per group — omit the model parameter on the dispatch so 
 the orchestrator's model strength, the mirror of stage 2's explicit `haiku` — in parallel
 batches of at most 10.
 
-Give each subagent this brief, with the member list (each member's `effects` and
-`invariants` from stage 2 included), stage 3's shared-purpose sentence, and — when stage 3
-recorded one — its contained-units-matched count, filled in:
+Give each subagent this brief, with the member list (each member's `inputs`, `outputs`,
+`effects` and `invariants` from stage 2 included), stage 3's shared-purpose sentence, and —
+when stage 3 recorded one — its contained-units-matched count, filled in:
 
 > Read the **actual source around** each of these locations: `<path:line list>` — the whole
 > file, or enough of it to see what sits above the cited line, not only the line itself. A
@@ -274,9 +274,12 @@ recorded one — its contained-units-matched count, filled in:
 > what is actually present rather than assuming the reference alone is sufficient. Stage 3's
 > summary layer clustered them on this claimed shared purpose: `<stage 3's purpose
 > sentence>`. Treat that as a lead, not a fact — do not rely on any summary. Stage 2 also
-> recorded each member's `effects` and `invariants`: `<member effects/invariants list>`.
-> Treat these as leads too — a claimed `none` is as unverified as the purpose sentence
-> until you have read the source.
+> recorded each member's `inputs`, `outputs`, `effects` and `invariants`: `<member
+> inputs/outputs/effects/invariants list>`. Treat these as leads too — a claimed `none` is
+> as unverified as the purpose sentence until you have read the source. A signature
+> mismatch is a refutation lead of the same kind: two units with the same stated purpose,
+> one taking a string and returning a string, the other taking a list and returning
+> nothing, are probably not twins.
 >
 > Your job is **refutation**. Find the reason these are not the same thing. Only if you
 > cannot find one do you report a twin.
@@ -318,9 +321,13 @@ recorded one — its contained-units-matched count, filled in:
 Reconcile before writing anything. The number of groups dispatched to verification is not
 something to recall from memory — compute it as candidate groups (before the cap) minus
 `Dropped at the cluster cap`, both already required below, so it is anchored on numbers
-fixed at stage 3, not on how stage 4's dispatch loop felt like it went. Print that computed
-count in the Coverage block as `Dispatched to verification: <n> groups` so the arithmetic is
-checkable from the report alone, without a reader having to re-derive it. Sum the verdicts
+fixed at stage 3, not on how stage 4's dispatch loop felt like it went. Unlike stage 2's
+anchor against `totals.chunks`, this side is self-reported, not script-measured — there is
+no equivalent of a script-counted number for groups. What holds it steady instead is
+sequencing: stage 3 finishes and this count is fixed before stage 4 ever dispatches, so a
+stage 4 failure cannot shrink it in sympathy. Print that computed count in the Coverage
+block as `Dispatched to verification: <n> groups` so the arithmetic is checkable from the
+report alone, without a reader having to re-derive it. Sum the verdicts
 stage 4 actually returned — `DIVERGENT` + `STABLE` + `JUSTIFIED` + `NOT_A_TWIN` +
 `UNREADABLE` — and compare it to that computed count. They must match; any shortfall is a
 stage 4 dispatch that came back empty, and belongs in the Coverage block as
