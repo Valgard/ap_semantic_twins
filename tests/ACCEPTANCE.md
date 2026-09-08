@@ -48,6 +48,12 @@ misreports this block is still non-conformant. Expected values for this corpus:
   clusters into two candidate groups — one per level — before collapsing into the single
   class-level group counted here. A change to which unit kinds stage 2 inventories changes
   this number.
+- `Collapsed into container: 1` group — the one candidate group this corpus's containment
+  collapse removes: `CustomerDto`'s method-level group (`fromRow` ↔ `fromRow`), absorbed
+  into the class-level group already counted above. This is `1` regardless of whether the
+  near-miss clusters, since `validation/` has no class wrapper and plays no part in
+  containment collapse; none of the other four pairs (`checkout`/`invoice`, `article`/
+  `category`, `validation`, `generated`) involves a class at all.
 - `Chunks:` `8` dispatched — one chunk per file (`totals.chunks` is also `8`; none of the
   eight files exceeds 800 lines). Every file in this corpus defines a named unit, so a
   healthy run reports `0` for `returned nothing` and `unparseable lines` alike, and `0` for
@@ -84,7 +90,12 @@ here. Dispatch it with the scope stated explicitly:
 Because this scope is caller-supplied, the agent's own exclusion pass never runs against
 it — round 2 gated that pass to a self-derived scope only, so the fact that the corpus
 lives under a `tests/` path segment (which the exclusion pass would otherwise treat as test
-code) does not cause it to discard the scope it was given.
+code) does not cause it to discard the scope it was given. The same holds on the candidate
+side: `pricing/checkout.py`, found while searching, also sits under that `tests/` path
+segment, but the caller's own named scope (`pricing/invoice.py`) sits inside that same test
+tree — so the test-code exclusion on candidates is dropped for this run too, and
+`checkout.py` stays eligible to be reported instead of silently folding into the excluded
+count.
 
 Expected: one `DIVERGENT` finding against `pricing/checkout.py:1`, naming at least the same
 two behavioural differences as the table above. The agent must not report `slug/`,

@@ -73,13 +73,21 @@ Give each subagent this brief, with `<path>` and the line range filled in:
 > - Good: "converts a gross price with a tax rate into net minor units, rounding half-up"
 > - Bad: "loops over the line items and divides by a factor"
 >
-> Test your sentence before you emit it:
+> "Rounding half-up" in the good example is a behaviour clause, not a construct: it names
+> what the result looks like when the exact value sits between two answers, not how the
+> code gets there. What follows the purpose must be observable in the result, not in the
+> code — that is the line between a detail worth keeping and a construction sentence.
 >
-> - Name no language construct: not "loop", "regex", "recursion", "lookup", "iterates",
->   "splits", "substitution", "character by character".
-> - It must stay true if the unit were rewritten from scratch with completely different
->   constructs. If rewriting the implementation would falsify your sentence, the sentence
->   describes the implementation, not the purpose — write it again.
+> Test your sentence before you emit it. The real test: **it must stay true if the unit were
+> rewritten from scratch with completely different constructs.** If rewriting the
+> implementation would falsify your sentence, the sentence describes the implementation, not
+> the purpose — write it again.
+>
+> Naming a language construct is the surest sign of a sentence that will fail this test,
+> including but not limited to: "loop", "regex", "recursion", "lookup", "iterates",
+> "splits", "substitution", "character by character", "lowercasing", "collapsing",
+> "trimming". This list illustrates the test, it does not replace it: a closed list invites
+> reaching for the nearest unlisted word instead of applying the test.
 >
 > A construction sentence describes how two twins differ instead of how they agree, and
 > sinks the pair invisibly. If you cannot say what a unit achieves, say
@@ -174,7 +182,10 @@ contained member and keep the container. If fewer than two distinct members rema
 group afterward, discard the group itself, since a twin needs at least two.
 
 Record the surviving count as **candidate groups** — the Coverage block reports it before
-the next step caps it.
+the next step caps it. Also record how many groups the containment collapse above removed —
+whether by the cross-group X-contains-Y rule or the single-group cleanup that follows it —
+as `Collapsed into container: <n> groups`, so a collapsed group stays distinguishable from
+one that never clustered at all.
 
 Sort groups by confidence, descending. Take the top **40** (or a higher cap the caller
 named). State how many groups you dropped at the cap.
@@ -270,6 +281,7 @@ Consolidation: ~<n> lines
 ## Coverage
 Corpus: <all source files | tests>
 Examined: <n> files, <n> units, <n> candidate groups (before the cap)
+Collapsed into container: <n> groups
 Chunks: <n> dispatched, <n> returned units, <n> returned nothing, <n> unparseable lines, <n> path mismatches
 Empty chunks (still empty after re-dispatch): <path:range>, <path:range>, ... (or none)
 Partitioned: yes (<n> partitions) | no

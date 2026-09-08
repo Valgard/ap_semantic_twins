@@ -112,15 +112,18 @@ The exclusions in step 1 govern findings, not only the change scope you derive t
 same content and path rules apply to what you find here, on the existing-code side. This is
 a rule about findings, not about searching — read anything while searching, including a
 generated or vendored file, since that may be exactly where an existing implementation
-sits. But a candidate whose existing-side location is generated, vendored, minified, or
-(unless the caller asked for the test corpus) test code must not become a reported finding:
-the duplicate side is not yours to change, since it is regenerated or overwritten on the
-next build, and a twin against it is not something anyone can act on. Refute or confirm it
-as you would any other candidate. If it would otherwise have been a finding, do not place
-it under Defects, Duplicates or Justified duplication — count it into the "Checked and
-refuted" block's excluded line instead, separate from the candidates refuted on the merits:
-it was not found to differ, it was found to be unreportable, and the two counts must not be
-collapsed into one number that hides which reason applies.
+sits. But a candidate whose existing-side location is generated, vendored or minified must
+not become a reported finding: the duplicate side is not yours to change, since it is
+regenerated or overwritten on the next build, and a twin against it is not something anyone
+can act on. The same holds for test code, with two escapes: the caller asked for the test
+corpus, or the caller's own named scope (from step 1) already sits inside a test tree — a
+scope the caller named themselves has already designated that tree as the codebase to
+search, and excluding it from candidates would mean searching against nothing. Refute or
+confirm the candidate as you would any other. If it would otherwise have been a finding, do
+not place it under Defects, Duplicates or Justified duplication — count it into the "Checked
+and refuted" block's excluded line instead, separate from the candidates refuted on the
+merits: it was not found to differ, it was found to be unreportable, and the two counts must
+not be collapsed into one number that hides which reason applies.
 
 ### 4. Refute each candidate
 
