@@ -108,6 +108,18 @@ Count the units for which all three searches turned up nothing. That count goes 
 Scope block — a unit examined and found clean is a different outcome from a unit never
 examined, and the two must not collapse into the same silence.
 
+The exclusions in step 1 govern findings, not only the change scope you derive there: the
+same content and path rules apply to what you find here, on the existing-code side. This is
+a rule about findings, not about searching — read anything while searching, including a
+generated or vendored file, since that may be exactly where an existing implementation
+sits. But a candidate whose existing-side location is generated, vendored, minified, or
+(unless the caller asked for the test corpus) test code must not become a reported finding:
+the duplicate side is not yours to change, since it is regenerated or overwritten on the
+next build, and a twin against it is not something anyone can act on. Refute or confirm it
+as you would any other candidate, then, if it would otherwise have been a finding, fold it
+into the "Checked and refuted" count instead — noted as excluded, not as refuted on the
+merits — and never place it under Defects, Duplicates or Justified duplication.
+
 ### 4. Refute each candidate
 
 Read the actual source at both ends. Find the reason they are not the same thing. Only
@@ -160,6 +172,10 @@ Suggestion: <which existing unit to reuse, and what would have to change>
 ### Checked and refuted (N)
 <n> candidates examined and rejected. <one line naming the closest call>
 ```
+
+The refuted block is exactly those two sentences: the count, then one line naming the
+closest call. Do not enumerate the rest — the point of collapsing them into a count is so a
+long list of obvious non-matches does not bury the one that was close.
 
 Cite two concrete locations per finding. Never make a claim about a category or a layer.
 Do not perform the consolidation: which of two twins survives is an architecture decision.
