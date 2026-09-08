@@ -59,6 +59,23 @@ TEST_PATH_SEGMENTS = ("tests", "test", "spec", "__tests__")
 
 TEST_NAME_MARKERS = ("test", "tests", "spec", "specs")
 
+# Exclusion reasons that also get a per-path list in excluded_paths, in
+# addition to their count in excluded. Every other key in excluded (e.g.
+# path_rule, unsupported_extension) is an aggregate count only -- there is
+# no single file to name for a whole extension bucket or naming-convention
+# rule. build_inventory derives both excluded and excluded_paths from this
+# one tuple, so a future exclusion reason wired into one and forgotten in
+# the other is no longer possible.
+EXCLUSION_REASONS_WITH_PATHS = (
+    "generated",
+    "symlink",
+    "submodule",
+    "untracked",
+    "missing",
+    "undecodable",
+    "permission_denied",
+)
+
 
 def is_generated(head: str) -> bool:
     """True when the first lines carry a generated-code marker."""
@@ -112,10 +129,13 @@ def chunk_plan(
 
 
 def list_source_files(repo: Path) -> list[str]:
-    """Every path git tracks in the repo, relative to the directory passed.
+    """Every path git tracks under `repo`, relative to the directory passed.
 
-    `git -C <dir> ls-files` returns paths relative to `<dir>`, not to the
-    repository root -- the two only coincide when `repo` *is* the root.
+    `git -C <dir> ls-files` is scoped to the subtree under `<dir>` -- it
+    does not list everything the repository as a whole tracks, only what
+    sits under that directory -- and the paths it returns are relative to
+    `<dir>`, not to the repository root. Both only coincide with "the whole
+    repository" when `repo` *is* the root.
     """
     result = subprocess.run(
         ["git", "-C", str(repo), "ls-files", "-z"],
@@ -127,8 +147,8 @@ def list_source_files(repo: Path) -> list[str]:
 
 
 def list_untracked_files(repo: Path) -> list[str]:
-    """Every path git sees as untracked and not ignored, same path semantics
-    as `list_source_files`."""
+    """Every untracked, non-ignored path under `repo`, same subtree scoping
+    and path semantics as `list_source_files`."""
     result = subprocess.run(
         ["git", "-C", str(repo), "ls-files", "-z", "--others", "--exclude-standard"],
         capture_output=True,
@@ -138,24 +158,52 @@ def list_untracked_files(repo: Path) -> list[str]:
     return [path for path in result.stdout.split("\0") if path]
 
 
+def list_submodule_paths(repo: Path) -> set[str]:
+    """Every path git tracks as a gitlink (a submodule reference, tree mode
+    160000) under `repo`, same subtree scoping and path semantics as
+    `list_source_files`.
+
+    A gitlink has no blob content of its own to read -- it names a commit in
+    another repository -- and its `Path(...).suffix` is always empty, so it
+    must be identified from the index itself rather than by trying to read
+    it like an ordinary file.
+    """
+    result = subprocess.run(
+        ["git", "-C", str(repo), "ls-files", "-z", "--stage"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    submodules: set[str] = set()
+    for entry in result.stdout.split("\0"):
+        if not entry:
+            continue
+        metadata, _, path = entry.partition("\t")
+        mode = metadata.split(" ", 1)[0]
+        if mode == "160000":
+            submodules.add(path)
+    return submodules
+
+
 def build_inventory(repo: Path, include_tests: bool = False) -> dict:
-    """Inventory the source files worth summarising, with a chunking plan."""
+    """Inventory the source files worth summarising, with a chunking plan.
+
+    Returns a dict with keys ``repo`` (the repository's absolute path),
+    ``include_tests``, ``files`` (the kept entries: ``path``, ``language``,
+    ``lines``, ``chunks``), ``excluded`` (a count per exclusion reason),
+    ``excluded_paths`` (the paths behind each reason listed in
+    `EXCLUSION_REASONS_WITH_PATHS`), ``unsupported_extensions`` (a histogram
+    of the extensions responsible for the ``unsupported_extension`` count),
+    and ``totals`` (``tracked``, ``files``, ``lines``, ``chunks``).
+    """
     files: list[dict] = []
     excluded = {
-        "generated": 0,
         "path_rule": 0,
         "unsupported_extension": 0,
-        "untracked": 0,
-        "missing": 0,
-        "undecodable": 0,
-        "permission_denied": 0,
+        **{reason: 0 for reason in EXCLUSION_REASONS_WITH_PATHS},
     }
     excluded_paths: dict[str, list[str]] = {
-        "generated": [],
-        "untracked": [],
-        "missing": [],
-        "undecodable": [],
-        "permission_denied": [],
+        reason: [] for reason in EXCLUSION_REASONS_WITH_PATHS
     }
     unsupported_extensions: dict[str, int] = {}
 
@@ -167,23 +215,46 @@ def build_inventory(repo: Path, include_tests: bool = False) -> dict:
     excluded["untracked"] = len(untracked)
     excluded_paths["untracked"] = untracked
 
-    for rel_path in list_source_files(repo):
+    submodule_paths = list_submodule_paths(repo)
+    tracked_paths = list_source_files(repo)
+
+    for rel_path in tracked_paths:
+        # A gitlink names a commit in another repository, not a blob in this
+        # one -- there is no content to read, and its Path(...).suffix is
+        # always empty, so it must be diverted before the extension check
+        # would otherwise misfile it as just another extensionless file.
+        if rel_path in submodule_paths:
+            excluded["submodule"] += 1
+            excluded_paths["submodule"].append(rel_path)
+            continue
+
         suffix = Path(rel_path).suffix.lower()
         language = SOURCE_EXTENSIONS.get(suffix)
         if language is None:
             excluded["unsupported_extension"] += 1
-            unsupported_extensions[suffix] = unsupported_extensions.get(suffix, 0) + 1
+            label = suffix if suffix else "(no extension)"
+            unsupported_extensions[label] = unsupported_extensions.get(label, 0) + 1
             continue
         if is_excluded_path(rel_path, include_tests):
             excluded["path_rule"] += 1
             continue
 
+        # A tracked symlink duplicates whatever it points at: reading
+        # through it would inventory the same lines a second time under a
+        # second path (or, for a link that escapes the repository, foreign
+        # code as if it were repository source). It is counted and named,
+        # never followed.
+        if (repo / rel_path).is_symlink():
+            excluded["symlink"] += 1
+            excluded_paths["symlink"].append(rel_path)
+            continue
+
         try:
             text = (repo / rel_path).read_text(encoding="utf-8")
         except FileNotFoundError:
-            # A dangling symlink or a file that is tracked but has since been
-            # deleted from disk without `git rm` -- both everyday mid-rebase
-            # states. Either way, the path is tracked but has no content.
+            # A file that is tracked but has since been deleted from disk
+            # without `git rm` -- an everyday mid-rebase state. The path is
+            # tracked but has no content.
             excluded["missing"] += 1
             excluded_paths["missing"].append(rel_path)
             continue
@@ -226,6 +297,7 @@ def build_inventory(repo: Path, include_tests: bool = False) -> dict:
         "excluded_paths": excluded_paths,
         "unsupported_extensions": unsupported_extensions,
         "totals": {
+            "tracked": len(tracked_paths),
             "files": len(files),
             "lines": sum(entry["lines"] for entry in files),
             "chunks": sum(len(entry["chunks"]) for entry in files),

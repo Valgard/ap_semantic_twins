@@ -94,19 +94,82 @@ def test_build_inventory_splits_unreadable_files_by_cause(repo: Path):
     assert "src/blob.py" not in kept
     assert "src/dangling.py" not in kept
     assert "src/ghost.py" not in kept
-    # dangling.py (dangling symlink) and ghost.py (tracked but deleted from
-    # disk) are both a FileNotFoundError -> "missing". blob.py is a bad
-    # encoding -> "undecodable". Neither triggers a permission error here.
-    assert inventory["excluded"]["missing"] == 2
+    # dangling.py is a symlink -- caught by the symlink bucket before any
+    # read is attempted, dangling or not (see
+    # test_build_inventory_puts_a_tracked_symlink_in_its_own_bucket). ghost.py
+    # is tracked but deleted from disk -- a FileNotFoundError -> "missing".
+    # blob.py is a bad encoding -> "undecodable". Neither triggers a
+    # permission error here.
+    assert inventory["excluded"]["missing"] == 1
+    assert inventory["excluded"]["symlink"] == 1
     assert inventory["excluded"]["undecodable"] == 1
     assert inventory["excluded"]["permission_denied"] == 0
     assert inventory["excluded"]["path_rule"] == 2
-    assert sorted(inventory["excluded_paths"]["missing"]) == [
-        "src/dangling.py",
-        "src/ghost.py",
-    ]
+    assert inventory["excluded_paths"]["missing"] == ["src/ghost.py"]
+    assert inventory["excluded_paths"]["symlink"] == ["src/dangling.py"]
     assert inventory["excluded_paths"]["undecodable"] == ["src/blob.py"]
     assert inventory["excluded_paths"]["permission_denied"] == []
+
+
+def test_build_inventory_puts_a_tracked_symlink_in_its_own_bucket(repo: Path):
+    # A tracked symlink pointing at another tracked file must not be
+    # inventoried as a second copy of that file's content -- and calc.py
+    # itself must still be inventoried exactly once, not skipped because its
+    # content is also reachable through the alias. The fixture's own
+    # src/dangling.py is already a (dangling) symlink, so the count is 2, not
+    # 1 -- see test_build_inventory_splits_unreadable_files_by_cause.
+    (repo / "src" / "alias.py").symlink_to("calc.py")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "add a symlink alias")
+    inventory = build_inventory(repo)
+    kept = {entry["path"] for entry in inventory["files"]}
+    assert "src/alias.py" not in kept
+    assert "src/calc.py" in kept
+    assert inventory["excluded"]["symlink"] == 2
+    assert sorted(inventory["excluded_paths"]["symlink"]) == [
+        "src/alias.py",
+        "src/dangling.py",
+    ]
+
+
+def test_build_inventory_puts_a_gitlink_in_its_own_submodule_bucket(repo: Path):
+    # A gitlink (a submodule reference, git tree mode 160000) is faked with
+    # low-level plumbing -- a real `git submodule add` needs a fetchable
+    # remote, which a throwaway fixture repo does not have.
+    fake_commit_sha = "a" * 40
+    _git(
+        repo,
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        f"160000,{fake_commit_sha},external-lib",
+    )
+    _git(repo, "commit", "-q", "-m", "add a submodule reference")
+    inventory = build_inventory(repo)
+    kept = {entry["path"] for entry in inventory["files"]}
+    assert "external-lib" not in kept
+    assert inventory["excluded"]["submodule"] == 1
+    assert inventory["excluded_paths"]["submodule"] == ["external-lib"]
+    # A gitlink must not also inflate the unsupported-extension histogram's
+    # no-extension bucket -- that bucket is for genuine extensionless
+    # source (Makefile, Dockerfile, a shebang script), not gitlinks. The
+    # fixture's own tracked .gitignore already accounts for the single
+    # "(no extension)" entry; the gitlink must not add a second.
+    assert inventory["unsupported_extensions"]["(no extension)"] == 1
+
+
+def test_totals_tracked_accounts_for_every_tracked_file(repo: Path):
+    # Every file list_source_files() returns must land in exactly one place:
+    # the kept files list, or one exclusion bucket. untracked is excluded
+    # from the sum on purpose -- it comes from a separate git invocation
+    # entirely and was never part of the tracked set totals.tracked counts.
+    inventory = build_inventory(repo)
+    accounted = inventory["totals"]["files"] + sum(
+        count
+        for reason, count in inventory["excluded"].items()
+        if reason != "untracked"
+    )
+    assert inventory["totals"]["tracked"] == accounted
 
 
 @pytest.mark.skipif(
@@ -129,7 +192,11 @@ def test_build_inventory_reports_permission_denied_files(repo: Path):
 
 def test_build_inventory_tracks_unsupported_extension_histogram(repo: Path):
     inventory = build_inventory(repo)
-    assert inventory["unsupported_extensions"] == {".md": 1, "": 1}
+    # The tracked ".gitignore" has no extension -- rendered as the literal
+    # label "(no extension)" rather than an empty-string key, distinct from
+    # the dedicated "submodule" bucket a gitlink lands in instead (see
+    # test_build_inventory_puts_a_gitlink_in_its_own_submodule_bucket).
+    assert inventory["unsupported_extensions"] == {".md": 1, "(no extension)": 1}
 
 
 def test_build_inventory_histogram_counts_repeated_unsupported_extensions(
@@ -140,7 +207,7 @@ def test_build_inventory_histogram_counts_repeated_unsupported_extensions(
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "add second markdown file")
     inventory = build_inventory(repo)
-    assert inventory["unsupported_extensions"] == {".md": 2, "": 1}
+    assert inventory["unsupported_extensions"] == {".md": 2, "(no extension)": 1}
 
 
 def test_build_inventory_records_generated_paths(repo: Path):
