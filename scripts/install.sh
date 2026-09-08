@@ -14,6 +14,10 @@ DEFAULT_MODE=symlink
 # Both the copy step and the --check comparison read this list, so there is
 # only ever one place that says what belongs there.
 DEPLOYED_SCRIPTS=(inventory.py)
+# Same idea, one level up: what a copy-mode deployment puts directly under
+# $SKILL_DEST. Without this, a leftover top-level entry from an older
+# version (a stale references2/, say) is invisible to --check.
+DEPLOYED_TOP_LEVEL=(SKILL.md references scripts)
 
 usage() {
     echo "usage: install.sh [--mode symlink|copy] [--check]" >&2
@@ -157,14 +161,32 @@ if [ "$check_only" -eq 1 ]; then
                 scripts_ok=0
             fi
         done
-        # dotglob only for this one glob, restored right after -- a hidden
+        # dotglob for both globs below, restored right after -- a hidden
         # leftover (e.g. .leftover.py) must count as unexpected too, but the
         # rest of the script must not start matching dotfiles elsewhere.
         # `shopt -p dotglob` itself exits 1 when the option is currently
         # unset (the common case), which would trip `set -e` right here --
-        # the `|| true` keeps the captured value without losing that status.
+        # the `|| true` keeps the captured value and discards the nonzero
+        # status, which `set -e` would otherwise act on.
         dotglob_previously="$(shopt -p dotglob)" || true
         shopt -s dotglob
+        # Same sweep, one level up: a stray entry directly under $SKILL_DEST
+        # (a references2/ left by an older version, say) sits outside every
+        # comparison above and would otherwise go unnoticed.
+        for deployed_entry in "$SKILL_DEST"/*; do
+            entry_name="$(basename "$deployed_entry")"
+            entry_known=0
+            for top_level_name in "${DEPLOYED_TOP_LEVEL[@]}"; do
+                if [ "$entry_name" = "$top_level_name" ]; then
+                    entry_known=1
+                    break
+                fi
+            done
+            if [ "$entry_known" -eq 0 ]; then
+                echo "drift: unexpected entry in deployed skill directory: $entry_name" >&2
+                status=1
+            fi
+        done
         for deployed_entry in "$SKILL_DEST/scripts"/*; do
             entry_name="$(basename "$deployed_entry")"
             entry_known=0
@@ -215,20 +237,36 @@ if [ "$check_only" -eq 1 ]; then
 fi
 
 mkdir -p "$HOME/.claude/skills" "$HOME/.claude/agents"
-rm -rf "$SKILL_DEST" "$AGENT_DEST"
+
+# Build the new deployment in a staging directory beside the real
+# destinations, entirely before either of them is touched. A failing `cp` or
+# `ln` aborts here (via `set -e`) with the previous deployment -- if any --
+# still completely intact; only replace it once the new tree is known-good.
+# The trap cleans up the staging directory on both the success and the
+# failure path: on success its contents have already been moved out from
+# under it (mv, not cp), so there is nothing left to remove.
+stage="$(mktemp -d "$HOME/.claude/.semantic-twins-install.XXXXXX")"
+trap 'rm -rf "$stage"' EXIT
 
 if [ "$mode" = symlink ]; then
-    ln -sfn "$REPO" "$SKILL_DEST"
-    ln -sfn "$REPO/agents/semantic-twin-hunter.md" "$AGENT_DEST"
+    ln -sfn "$REPO" "$stage/skill"
+    ln -sfn "$REPO/agents/semantic-twin-hunter.md" "$stage/agent"
 else
-    mkdir -p "$SKILL_DEST" "$SKILL_DEST/scripts"
-    cp "$REPO/SKILL.md" "$SKILL_DEST/SKILL.md"
-    cp -R "$REPO/references" "$SKILL_DEST/references"
+    mkdir -p "$stage/skill/scripts"
+    cp "$REPO/SKILL.md" "$stage/skill/SKILL.md"
+    cp -R "$REPO/references" "$stage/skill/references"
     for script_name in "${DEPLOYED_SCRIPTS[@]}"; do
-        cp "$REPO/scripts/$script_name" "$SKILL_DEST/scripts/$script_name"
+        cp "$REPO/scripts/$script_name" "$stage/skill/scripts/$script_name"
     done
-    cp "$REPO/agents/semantic-twin-hunter.md" "$AGENT_DEST"
+    cp "$REPO/agents/semantic-twin-hunter.md" "$stage/agent"
 fi
+
+# The new tree is complete. Swap each destination individually so a failure
+# on the second swap does not undo a successful first one.
+rm -rf "$SKILL_DEST"
+mv "$stage/skill" "$SKILL_DEST"
+rm -rf "$AGENT_DEST"
+mv "$stage/agent" "$AGENT_DEST"
 
 echo "installed in $mode mode"
 

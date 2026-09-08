@@ -186,6 +186,39 @@ def test_symlink_install_after_copy_replaces_the_stale_copy_directory(
     assert check_result.returncode == 0
 
 
+@pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0,
+    reason="root bypasses directory permission checks",
+)
+def test_a_failed_build_leaves_the_previous_deployment_intact(fake_home: FakeHome):
+    # install.sh now builds the new deployment into a staging directory
+    # beside the destinations and only swaps it in once the build is
+    # complete. Force the build phase itself to fail -- by making
+    # $HOME/.claude read-only, so even creating the staging directory is
+    # refused -- and confirm neither destination was touched: no half
+    # deletion, no half replacement.
+    fake_home.run("--mode", "copy")
+    skill_dest = _skill_dest(fake_home.path)
+    agent_dest = _agent_dest(fake_home.path)
+    skill_marker = (skill_dest / "SKILL.md").read_text()
+    agent_marker = agent_dest.read_text()
+
+    claude_dir = fake_home.path / ".claude"
+    claude_dir.chmod(0o555)
+    try:
+        result = fake_home.run("--mode", "symlink")
+    finally:
+        claude_dir.chmod(0o755)
+
+    assert result.returncode != 0
+    assert skill_dest.is_dir()
+    assert not skill_dest.is_symlink()
+    assert (skill_dest / "SKILL.md").read_text() == skill_marker
+    assert agent_dest.is_file()
+    assert not agent_dest.is_symlink()
+    assert agent_dest.read_text() == agent_marker
+
+
 def test_check_after_clean_copy_install_exits_zero(fake_home: FakeHome):
     fake_home.run("--mode", "copy")
     result = fake_home.run("--check")
@@ -312,6 +345,29 @@ def test_check_detects_an_unexpected_file_in_deployed_scripts(fake_home: FakeHom
     assert result.returncode == 1
     assert "drift: unexpected file in deployed scripts/: leftover.py" in result.stderr
     assert "drift: unexpected file in deployed scripts/: .leftover.py" in result.stderr
+
+
+def test_check_detects_an_unexpected_entry_at_the_deployed_skill_top_level(
+    fake_home: FakeHome,
+):
+    # The same extras sweep as test_check_detects_an_unexpected_file_in_deployed_scripts,
+    # one level up: a stray entry directly under $SKILL_DEST (a references2/
+    # left by an older version, say) sits outside SKILL.md/references/
+    # scripts and would otherwise go unnoticed.
+    skill_dest = _skill_dest(fake_home.path)
+    fake_home.run("--mode", "copy")
+    (skill_dest / "leftover_dir").mkdir()
+    (skill_dest / ".leftover").write_text("Z = 1\n")
+    result = fake_home.run("--check")
+    assert result.returncode == 1
+    assert (
+        "drift: unexpected entry in deployed skill directory: leftover_dir"
+        in result.stderr
+    )
+    assert (
+        "drift: unexpected entry in deployed skill directory: .leftover"
+        in result.stderr
+    )
 
 
 def test_check_distinguishes_a_diff_failure_from_ordinary_drift(fake_home: FakeHome):
