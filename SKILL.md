@@ -73,25 +73,42 @@ Give each subagent this brief, with `<path>` and the line range filled in:
 > - Good: "converts a gross price with a tax rate into net minor units, rounding half-up"
 > - Bad: "loops over the line items and divides by a factor"
 >
+> Test your sentence before you emit it:
+>
+> - Name no language construct: not "loop", "regex", "recursion", "lookup", "iterates",
+>   "splits", "substitution", "character by character".
+> - It must stay true if the unit were rewritten from scratch with completely different
+>   constructs. If rewriting the implementation would falsify your sentence, the sentence
+>   describes the implementation, not the purpose — write it again.
+>
 > A construction sentence describes how two twins differ instead of how they agree, and
 > sinks the pair invisibly. If you cannot say what a unit achieves, say
 > `"purpose": "unclear"` — that is honest and recoverable; a construction sentence is not.
 >
 > `effects` names side effects (I/O, mutation, network, global state) or `none`.
 > `invariants` names guards, throws and rounding rules, or `none`.
+>
+> `file` must be copied byte for byte from the `<path>` you were given above — do not
+> normalise, shorten or resolve it. A record whose `file` differs from the dispatched path
+> is unusable downstream: it points at a different file, or at nothing.
 
-Collect every line into one JSONL index.
+Collect every line into one JSONL index. Before anything else, check each record's `file`
+field against the path you dispatched that chunk against. Discard any record whose `file`
+does not match exactly — do not cluster it — and count it as a path mismatch, in the same
+spirit as the unparseable-line count below: a normalised or shortened path is not safe to
+trust downstream.
 
 Track what came back, per chunk: how many you dispatched — count chunks, not attempts, so a
 chunk re-dispatched below is still one dispatch, not two — how many returned at least one
-unit, how many returned nothing at all, and how many lines failed to parse as JSON — count
-the unparseable lines rather than dropping them silently. If a chunk returned nothing,
+unit, how many returned nothing at all, how many lines failed to parse as JSON — count
+the unparseable lines rather than dropping them silently — and how many records were
+discarded as path mismatches. If a chunk returned nothing,
 re-dispatch it once; count it toward "returned nothing" only if it is still empty after
 that retry, so the number means "still empty after we tried again," not "empty on the first
 try." Name the `path:range` of each chunk still empty after re-dispatch for the Coverage
 block instead of letting it vanish — list up to 20 there and say "and `<n>` more" beyond
 that, so a badly degraded run does not produce a report that is mostly a list of ranges.
-These four numbers are mandatory in stage 5's report — a run where a third of the chunk
+These five numbers are mandatory in stage 5's report — a run where a third of the chunk
 agents came back empty must not read like a complete one.
 
 Chunks overlap by 40 lines so that no unit straddling a seam is missed, which means a unit
@@ -122,6 +139,31 @@ not a second twin. This is the same guard stage 2's dedup applies, just at group
 time; if a group is left with fewer than two distinct members afterward, discard the group
 itself, since a twin needs at least two.
 
+Collapse containment next, before recording the candidate count below. Stage 2 inventories
+a class and its own methods as separate units, so a class duplicated across two files
+clusters twice: once as a class-level group, once as a method-level group per duplicated
+method. Left alone, one duplication is reported once per contained unit, all competing for
+slots under the cap below.
+
+A class-level group X **contains** a method-level group Y when every member of Y is a
+method belonging to a class that is itself a member of X — same file, and, if that file
+declares more than one class, the nearest enclosing one. When X contains Y:
+
+- From the stage 2 index, not from the groups alone, list every method belonging to any
+  member of X. This is the class's full contained set, including methods that never
+  clustered into any group at all.
+- For each of those methods, check whether it pairs, in some group, with the corresponding
+  method of X's other member(s) — the method occupying the same role in the other class,
+  ordinarily the same name.
+- If every one of them pairs this way: report only X. Drop Y and any other method-level
+  group made entirely of X's contained methods. Append to X's shared-purpose sentence how
+  many contained units matched, e.g. "all 3 methods also match" — that note is what carries
+  the finding through stage 4 and into the report.
+- If even one of them does not pair — a unique method, or one whose counterpart in the
+  other class never clustered — the class is only partly duplicated. Drop X instead and
+  keep the method-level groups that did pair as separate findings. A partial match is not a
+  whole-class finding: reporting X anyway would claim more duplication than exists.
+
 Record the surviving count as **candidate groups** — the Coverage block reports it before
 the next step caps it.
 
@@ -142,7 +184,12 @@ most 10.
 Give each subagent this brief, with the member list and stage 3's shared-purpose sentence
 filled in:
 
-> Read the **actual source** at each of these locations: `<path:line list>`. Stage 3's
+> Read the **actual source around** each of these locations: `<path:line list>` — the whole
+> file, or enough of it to see what sits above the cited line, not only the line itself. A
+> `JUSTIFIED` verdict rests on evidence that sits above the unit — a comment, an ADR
+> reference, a commit message — never inside the cited line, so reading only that line
+> cannot find it. If a comment refers to a decision recorded elsewhere, say so and quote
+> what is actually present rather than assuming the reference alone is sufficient. Stage 3's
 > summary layer clustered them on this claimed shared purpose: `<stage 3's purpose
 > sentence>`. Treat that as a lead, not a fact — do not rely on any summary.
 >
@@ -208,7 +255,7 @@ Consolidation: ~<n> lines
 ## Coverage
 Corpus: <all source files | tests>
 Examined: <n> files, <n> units, <n> candidate groups (before the cap)
-Chunks: <n> dispatched, <n> returned units, <n> returned nothing, <n> unparseable lines
+Chunks: <n> dispatched, <n> returned units, <n> returned nothing, <n> unparseable lines, <n> path mismatches
 Empty chunks (still empty after re-dispatch): <path:range>, <path:range>, ... (or none)
 Partitioned: yes (<n> partitions) | no
 Excluded: <n> generated, <n> by path rule, <n> unsupported extension, <n> untracked, <n> missing, <n> undecodable, <n> permission denied
