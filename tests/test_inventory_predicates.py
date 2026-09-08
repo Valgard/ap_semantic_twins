@@ -71,6 +71,8 @@ def test_paths_excluded_by_convention(rel_path):
         "src/__tests__/widget.test.ts",
         "src/pricing_test.py",
         "src/widget.spec.ts",
+        "src/Pricing/NetCalculatorTests.cs",
+        "src/widget.specs.ts",
     ],
 )
 def test_test_paths_excluded_unless_requested(rel_path):

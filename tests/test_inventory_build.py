@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -19,6 +20,8 @@ def repo(tmp_path: Path) -> Path:
     _git(tmp_path, "init", "-q")
     _git(tmp_path, "config", "user.email", "test@example.com")
     _git(tmp_path, "config", "user.name", "Test")
+
+    (tmp_path / ".gitignore").write_text("*.pyc\n")
 
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "calc.py").write_text("def net(x):\n    return x\n")
@@ -48,6 +51,11 @@ def repo(tmp_path: Path) -> Path:
 
     (tmp_path / "src" / "ghost.py").unlink()
 
+    # Untracked and matched by the committed .gitignore above: must never
+    # surface as an untracked source file. Only `--exclude-standard` on the
+    # `git ls-files --others` call keeps it out.
+    (tmp_path / "src" / "cache.pyc").write_text("compiled\n")
+
     return tmp_path
 
 
@@ -76,7 +84,8 @@ def test_build_inventory_counts_each_exclusion_reason(repo: Path):
     inventory = build_inventory(repo)
     assert inventory["excluded"]["generated"] == 1
     assert inventory["excluded"]["path_rule"] == 2
-    assert inventory["excluded"]["unsupported_extension"] == 1
+    # README.md (".md") and the tracked ".gitignore" (no extension).
+    assert inventory["excluded"]["unsupported_extension"] == 2
 
 
 def test_build_inventory_splits_unreadable_files_by_cause(repo: Path):
@@ -100,9 +109,38 @@ def test_build_inventory_splits_unreadable_files_by_cause(repo: Path):
     assert inventory["excluded_paths"]["permission_denied"] == []
 
 
+@pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0,
+    reason="root bypasses file permission checks",
+)
+def test_build_inventory_reports_permission_denied_files(repo: Path):
+    secret = repo / "src" / "secret.py"
+    secret.write_text("E = 5\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "add unreadable file")
+    secret.chmod(0o000)
+    try:
+        inventory = build_inventory(repo)
+        assert inventory["excluded"]["permission_denied"] == 1
+        assert inventory["excluded_paths"]["permission_denied"] == ["src/secret.py"]
+    finally:
+        secret.chmod(0o644)
+
+
 def test_build_inventory_tracks_unsupported_extension_histogram(repo: Path):
     inventory = build_inventory(repo)
-    assert inventory["unsupported_extensions"] == {".md": 1}
+    assert inventory["unsupported_extensions"] == {".md": 1, "": 1}
+
+
+def test_build_inventory_histogram_counts_repeated_unsupported_extensions(
+    repo: Path,
+):
+    second_md = repo / "docs.md"
+    second_md.write_text("# docs\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "add second markdown file")
+    inventory = build_inventory(repo)
+    assert inventory["unsupported_extensions"] == {".md": 2, "": 1}
 
 
 def test_build_inventory_records_generated_paths(repo: Path):
@@ -121,6 +159,19 @@ def test_build_inventory_counts_untracked_source_files(repo: Path):
     assert inventory["excluded"]["path_rule"] == 2
 
 
+def test_build_inventory_ignores_gitignored_files_when_counting_untracked(
+    repo: Path,
+):
+    # The fixture's own src/cache.pyc is untracked and matched by the
+    # committed .gitignore's "*.pyc" rule. Only `--exclude-standard` on the
+    # `git ls-files --others` call keeps a gitignored file out of the
+    # untracked bucket -- without it, every gitignored file in the tree would
+    # be reported as an untracked source file.
+    inventory = build_inventory(repo)
+    assert inventory["excluded"]["untracked"] == 0
+    assert inventory["excluded_paths"]["untracked"] == []
+
+
 def test_build_inventory_chunks_long_files(repo: Path):
     inventory = build_inventory(repo)
     entry = next(e for e in inventory["files"] if e["path"] == "src/long.py")
@@ -134,10 +185,38 @@ def test_build_inventory_records_language(repo: Path):
     assert entry["language"] == "python"
 
 
+def test_build_inventory_normalises_extension_case(repo: Path):
+    widget = repo / "src" / "Widget.CS"
+    widget.write_text("public class Widget {}\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "add upper-case extension file")
+    inventory = build_inventory(repo)
+    kept = {entry["path"]: entry for entry in inventory["files"]}
+    assert "src/Widget.CS" in kept
+    assert kept["src/Widget.CS"]["language"] == "csharp"
+
+
 def test_include_tests_keeps_the_test_corpus(repo: Path):
     inventory = build_inventory(repo, include_tests=True)
     kept = {entry["path"] for entry in inventory["files"]}
     assert "tests/test_calc.py" in kept
+
+
+def test_build_inventory_reports_an_absolute_repo_path(repo: Path):
+    # Stage 1 joins the relative file paths it returns onto this field for
+    # subagents that share no working directory with this process -- a
+    # relative value here would break every one of those downstream reads.
+    # A relative Path argument makes str(repo) and str(repo.resolve())
+    # diverge, which a bare tmp_path (already absolute) cannot.
+    relative_repo = Path(os.path.relpath(repo))
+    inventory = build_inventory(relative_repo)
+    assert Path(inventory["repo"]).is_absolute()
+    assert inventory["repo"] == str(repo.resolve())
+
+
+def test_build_inventory_reports_the_include_tests_flag_it_was_given(repo: Path):
+    assert build_inventory(repo, include_tests=False)["include_tests"] is False
+    assert build_inventory(repo, include_tests=True)["include_tests"] is True
 
 
 def test_totals_are_consistent_with_the_file_list(repo: Path):

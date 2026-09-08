@@ -11,7 +11,12 @@ CORPUS = Path(__file__).resolve().parent / "fixtures" / "twin-corpus"
 @pytest.fixture
 def corpus_repo(tmp_path: Path) -> Path:
     target = tmp_path / "corpus"
-    shutil.copytree(CORPUS, target)
+    # The corpus fixture has no .gitignore of its own, so a plain copytree
+    # would drag its gitignored __pycache__ directories along, and the
+    # following `git add -A` (also with no .gitignore in the tmp repo) would
+    # then track those .pyc files -- an interpreter-version-dependent count
+    # that does not match the real, git-tracked corpus.
+    shutil.copytree(CORPUS, target, ignore=shutil.ignore_patterns("__pycache__"))
     for args in (
         ("init", "-q"),
         ("config", "user.email", "fixture@example.com"),

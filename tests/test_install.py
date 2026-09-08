@@ -161,6 +161,29 @@ def test_check_after_symlink_install_exits_zero(fake_home: FakeHome):
     fake_home.run("--mode", "symlink")
     result = fake_home.run("--check")
     assert result.returncode == 0
+    assert "skill: symlink, cannot drift" in result.stdout
+
+
+def test_symlink_install_after_copy_replaces_the_stale_copy_directory(
+    fake_home: FakeHome,
+):
+    # The copy -> symlink direction of the destroy-before-verify family: a
+    # prior copy-mode deployment leaves a real directory at SKILL_DEST, and
+    # `rm -rf "$SKILL_DEST" "$AGENT_DEST"` must remove it before `ln -sfn`
+    # runs. Drop "$SKILL_DEST" from that rm -rf and `ln -sfn "$REPO"
+    # "$SKILL_DEST"` treats the still-present real directory as a place to
+    # link *into* (ln's directory-target behaviour), nesting a dead symlink
+    # at $SKILL_DEST/semantic-twins instead of replacing $SKILL_DEST itself.
+    fake_home.run("--mode", "copy")
+    result = fake_home.run("--mode", "symlink")
+    assert result.returncode == 0
+
+    skill_dest = _skill_dest(fake_home.path)
+    assert skill_dest.is_symlink()
+    assert skill_dest.resolve() == REPO_ROOT.resolve()
+
+    check_result = fake_home.run("--check")
+    assert check_result.returncode == 0
 
 
 def test_check_after_clean_copy_install_exits_zero(fake_home: FakeHome):
@@ -187,6 +210,17 @@ def test_check_flags_mode_mismatch_between_requested_and_deployed(
     assert "drift: agent deployed as symlink, copy requested" in result.stderr
 
 
+def test_check_flags_copy_deployment_when_symlink_requested(fake_home: FakeHome):
+    # The reverse direction of test_check_flags_mode_mismatch_between_requested_and_deployed:
+    # deployed as copy, --check --mode symlink requested. Both the skill and
+    # agent "deployed as copy, symlink requested" branches must fire.
+    fake_home.run("--mode", "copy")
+    result = fake_home.run("--check", "--mode", "symlink")
+    assert result.returncode == 1
+    assert "drift: skill deployed as copy, symlink requested" in result.stderr
+    assert "drift: agent deployed as copy, symlink requested" in result.stderr
+
+
 def test_check_detects_a_symlink_pointing_at_the_wrong_target(fake_home: FakeHome):
     fake_home.run("--mode", "symlink")
     skill_dest = _skill_dest(fake_home.path)
@@ -211,6 +245,20 @@ def test_check_reports_missing_destination_rather_than_differs(fake_home: FakeHo
     assert "differs from the deployed copy" not in result.stderr
 
 
+def test_check_reports_missing_skill_with_nonzero_status(fake_home: FakeHome):
+    # Mirror of test_check_reports_missing_destination_rather_than_differs,
+    # deleting the skill side instead of the agent side. Both branches print
+    # their "missing" message independently of whether they also set
+    # status=1, so a passing exit code here is the only signal that the
+    # skill's own missing-destination branch (not just the agent's) sets it.
+    fake_home.run("--mode", "copy")
+    shutil.rmtree(_skill_dest(fake_home.path))
+
+    result = fake_home.run("--check")
+    assert result.returncode == 1
+    assert "missing: skill not deployed" in result.stderr
+
+
 def test_check_detects_drift_in_deployed_skill_md(fake_home: FakeHome):
     fake_home.run("--mode", "copy")
     _tamper(_skill_dest(fake_home.path) / "SKILL.md", "tampered\n")
@@ -222,6 +270,21 @@ def test_check_detects_drift_in_deployed_skill_md(fake_home: FakeHome):
 def test_check_detects_drift_in_deployed_taxonomy(fake_home: FakeHome):
     fake_home.run("--mode", "copy")
     _tamper(_skill_dest(fake_home.path) / "references" / "taxonomy.md", "tampered\n")
+    result = fake_home.run("--check")
+    assert result.returncode == 1
+    assert "drift: references/ differs from the deployed copy" in result.stderr
+
+
+def test_check_detects_drift_in_a_references_subdirectory(fake_home: FakeHome):
+    # references/examples/notes.txt sits one level below references/ itself,
+    # so a non-recursive comparison ("Common subdirectories: ... examples")
+    # would never look inside it and miss the tamper. Only a recursive diff
+    # (-r) descends far enough to catch it.
+    fake_home.run("--mode", "copy")
+    _tamper(
+        _skill_dest(fake_home.path) / "references" / "examples" / "notes.txt",
+        "tampered\n",
+    )
     result = fake_home.run("--check")
     assert result.returncode == 1
     assert "drift: references/ differs from the deployed copy" in result.stderr
@@ -340,9 +403,11 @@ def test_unknown_mode_or_unknown_flag_exits_two(fake_home: FakeHome):
 def test_gitignore_instruction_only_in_symlink_mode(fake_home: FakeHome):
     symlink_result = fake_home.run("--mode", "symlink")
     assert "~/.claude/.gitignore" in symlink_result.stdout
+    assert "installed in symlink mode" in symlink_result.stdout
 
     copy_result = fake_home.run("--mode", "copy")
     assert "~/.claude/.gitignore" not in copy_result.stdout
+    assert "installed in copy mode" in copy_result.stdout
 
 
 def test_check_reports_a_broken_symlink_rather_than_not_installed(fake_home: FakeHome):

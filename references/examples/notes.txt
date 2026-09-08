@@ -1,0 +1,3 @@
+Structural fixture: a nested file under references/ so install.sh's --check
+drift comparison exercises its recursive directory diff instead of only the
+directory's immediate children. Not taxonomy content.
