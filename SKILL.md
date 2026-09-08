@@ -119,6 +119,19 @@ that, so a badly degraded run does not produce a report that is mostly a list of
 These five numbers are mandatory in stage 5's report — a run where a third of the chunk
 agents came back empty must not read like a complete one.
 
+Anchor the dispatch count against `totals.chunks` from stage 1's inventory — the one number
+in this pipeline that a script, not a model, produced. If you dispatched fewer chunks than
+`totals.chunks` (a context limit, a budget, a broken batch chain), that is not an internal
+detail to absorb quietly: state both numbers side by side in the Coverage block's `Chunks:`
+line — `<n> of <n> totals.chunks dispatched` — even when they match, so their absence never
+has to be read as a claim of completeness.
+
+Track, per file, whether every one of its chunks landed in "returned at least one unit."
+`Examined: <n> files` in stage 5's report is that count — files stage 2 actually covered —
+not `totals.files`, which is only what stage 1 planned to look at before any dispatch
+happened. A file with even one chunk still empty after re-dispatch does not count as
+examined.
+
 Chunks overlap by 40 lines so that no unit straddling a seam is missed, which means a unit
 inside the overlap is emitted by both neighbouring subagents. Before clustering, discard
 records that duplicate an existing `(file, line, name)` — keep the first, drop the rest.
@@ -244,9 +257,14 @@ Give each subagent this brief, with the member list, stage 3's shared-purpose se
 
 ## Stage 5 — Report
 
-Reconcile before writing anything. Sum the verdicts stage 4 returned — `DIVERGENT` +
-`STABLE` + `JUSTIFIED` + `NOT_A_TWIN` — and compare it to the number of groups you
-dispatched to verification. They must match; any shortfall is a stage 4 dispatch that came
+Reconcile before writing anything. The number of groups dispatched to verification is not
+something to recall from memory — compute it as candidate groups (before the cap) minus
+`Dropped at the cluster cap`, both already required below, so it is anchored on numbers
+fixed at stage 3, not on how stage 4's dispatch loop felt like it went. Print that computed
+count in the Coverage block as `Dispatched to verification: <n> groups` so the arithmetic is
+checkable from the report alone, without a reader having to re-derive it. Sum the verdicts
+stage 4 actually returned — `DIVERGENT` + `STABLE` + `JUSTIFIED` + `NOT_A_TWIN` — and compare
+it to that computed count. They must match; any shortfall is a stage 4 dispatch that came
 back empty, and belongs in the Coverage block as `Verification returned nothing`, not
 silently absorbed into whichever total is convenient. A failed stage 4 dispatch must not be
 indistinguishable from a group that never existed.
@@ -282,7 +300,7 @@ Consolidation: ~<n> lines
 Corpus: <all source files | tests>
 Examined: <n> files, <n> units, <n> candidate groups (before the cap)
 Collapsed into container: <n> groups
-Chunks: <n> dispatched, <n> returned units, <n> returned nothing, <n> unparseable lines, <n> path mismatches
+Chunks: <n> of <n> totals.chunks dispatched, <n> returned units, <n> returned nothing, <n> unparseable lines, <n> path mismatches
 Empty chunks (still empty after re-dispatch): <path:range>, <path:range>, ... (or none)
 Partitioned: yes (<n> partitions) | no
 Excluded: <n> generated, <n> by path rule, <n> unsupported extension, <n> untracked, <n> missing, <n> undecodable, <n> permission denied
@@ -292,6 +310,7 @@ Untracked files: <path>, <path>, ... (or none)
 Missing files: <path>, <path>, ... (or none)
 Undecodable files: <path>, <path>, ... (or none)
 Permission denied files: <path>, <path>, ... (or none)
+Dispatched to verification: <n> groups
 Refuted in verification (NOT_A_TWIN): <n> groups
 Verification returned nothing: <n> groups
 Dropped at the cluster cap: <n> groups

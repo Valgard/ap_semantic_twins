@@ -147,6 +147,18 @@ Exactly one per pair:
   as the system working; the count of rejections is what makes the confirmed findings
   credible.
 
+### 6. Reconcile
+
+Every examined unit lands in exactly one outcome for the Scope block: **reported** (at
+least one of its candidates became a finding, under Defects, Duplicates or Justified
+duplication), **refuted** (none did, but at least one candidate was found and evaluated as
+`NOT_A_TWIN`), **excluded** (its only candidates were the generated, vendored, minified or
+test-side ones step 3 withholds from reporting), or **no candidate found** (step 3's three
+searches turned up nothing at all). When a unit's candidates span more than one of these,
+count it under the strongest: reported beats refuted beats excluded. State the result as one
+equation in the Scope block — examined equals dropped plus the four buckets — the same
+closure the refuted block's heading already applies to its own two parts.
+
 ## Output Format
 
 ```
@@ -156,6 +168,7 @@ Exactly one per pair:
 <n> new units examined — <caller-supplied scope, or from <base>...HEAD, base resolved via <how>>
 <n> units dropped before comparison — generated, vendored, migrations, snapshots, dist or build output, minified, or test code (diff-derived scope only)
 <n> units with no candidate found at all
+<n> examined = <n> dropped + <n> no candidate found + <n> reported + <n> refuted + <n> excluded
 
 ### Defects: divergent twins (N)
 
