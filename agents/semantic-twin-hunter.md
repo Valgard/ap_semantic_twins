@@ -116,9 +116,11 @@ sits. But a candidate whose existing-side location is generated, vendored, minif
 (unless the caller asked for the test corpus) test code must not become a reported finding:
 the duplicate side is not yours to change, since it is regenerated or overwritten on the
 next build, and a twin against it is not something anyone can act on. Refute or confirm it
-as you would any other candidate, then, if it would otherwise have been a finding, fold it
-into the "Checked and refuted" count instead — noted as excluded, not as refuted on the
-merits — and never place it under Defects, Duplicates or Justified duplication.
+as you would any other candidate. If it would otherwise have been a finding, do not place
+it under Defects, Duplicates or Justified duplication — count it into the "Checked and
+refuted" block's excluded line instead, separate from the candidates refuted on the merits:
+it was not found to differ, it was found to be unreportable, and the two counts must not be
+collapsed into one number that hides which reason applies.
 
 ### 4. Refute each candidate
 
@@ -171,11 +173,13 @@ Suggestion: <which existing unit to reuse, and what would have to change>
 
 ### Checked and refuted (N)
 <n> candidates examined and rejected. <one line naming the closest call>
+<n> excluded (generated, vendored, minified or test-side — not reported as findings)
 ```
 
-The refuted block is exactly those two sentences: the count, then one line naming the
-closest call. Do not enumerate the rest — the point of collapsing them into a count is so a
-long list of obvious non-matches does not bury the one that was close.
+The refuted block is exactly those three lines: the rejected count and closest call, then
+the excluded count — `(N)` in the heading is the sum of the two. Do not enumerate either
+list — the point of collapsing them into counts is so a long list of obvious non-matches or
+excluded candidates does not bury the one that was close.
 
 Cite two concrete locations per finding. Never make a claim about a category or a layer.
 Do not perform the consolidation: which of two twins survives is an architecture decision.

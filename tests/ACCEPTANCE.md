@@ -50,7 +50,8 @@ misreports this block is still non-conformant. Expected values for this corpus:
   this number.
 - `Chunks:` `8` dispatched — one chunk per file (`totals.chunks` is also `8`; none of the
   eight files exceeds 800 lines). Every file in this corpus defines a named unit, so a
-  healthy run reports `0` for both `returned nothing` and `unparseable lines`.
+  healthy run reports `0` for `returned nothing` and `unparseable lines` alike, and `0` for
+  `path mismatches` too — the dispatched subagents return the `file` path unchanged.
 - `Empty chunks (still empty after re-dispatch): none` — follows from `returned nothing`
   being `0` above; there is nothing to name.
 - `Partitioned: no` — 8 units is nowhere near the 20,000-unit partitioning threshold.

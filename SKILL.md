@@ -156,13 +156,22 @@ declares more than one class, the nearest enclosing one. When X contains Y:
   method of X's other member(s) — the method occupying the same role in the other class,
   ordinarily the same name.
 - If every one of them pairs this way: report only X. Drop Y and any other method-level
-  group made entirely of X's contained methods. Append to X's shared-purpose sentence how
-  many contained units matched, e.g. "all 3 methods also match" — that note is what carries
-  the finding through stage 4 and into the report.
+  group made entirely of X's contained methods. Record how many contained units matched as
+  its own field on X — `<k> of <n> contained units matched` — not appended to the
+  shared-purpose sentence: stage 4 is free to rewrite that sentence after reading the
+  source, and a note folded into it would not survive the rewrite.
 - If even one of them does not pair — a unique method, or one whose counterpart in the
   other class never clustered — the class is only partly duplicated. Drop X instead and
   keep the method-level groups that did pair as separate findings. A partial match is not a
   whole-class finding: reporting X anyway would claim more duplication than exists.
+
+The same containment relationship can also land inside a single group instead of across
+two: a class and one of its own methods sometimes cluster together in one group, because
+their purpose sentences read alike. Apply the same guard the dedup step above already uses,
+extended from exact duplicates to containment: if a group has a member that is itself
+contained — by the test above — in another member of the *same* group, discard the
+contained member and keep the container. If fewer than two distinct members remain in the
+group afterward, discard the group itself, since a twin needs at least two.
 
 Record the surviving count as **candidate groups** — the Coverage block reports it before
 the next step caps it.
@@ -181,8 +190,8 @@ most valuable kind and this is where one can be lost.
 Dispatch one subagent per group, at inherited model strength, in parallel batches of at
 most 10.
 
-Give each subagent this brief, with the member list and stage 3's shared-purpose sentence
-filled in:
+Give each subagent this brief, with the member list, stage 3's shared-purpose sentence, and
+— when stage 3 recorded one — its contained-units-matched count, filled in:
 
 > Read the **actual source around** each of these locations: `<path:line list>` — the whole
 > file, or enough of it to see what sits above the cited line, not only the line itself. A
@@ -210,6 +219,10 @@ filled in:
 >
 > Return the shared purpose as one sentence, as it stands after reading the source —
 > corrected from stage 3's claim if that claim was wrong.
+>
+> If a contained-units-matched count was given to you above, return it unchanged in your
+> response. It is a structural fact about the group's composition from stage 3, not a claim
+> about behaviour, so reading the source does not revise it.
 >
 > For every member, report its line span as `path:start-end` and its line count. For a
 > `STABLE` verdict these numbers are required, not optional: they are the only input to the
@@ -239,6 +252,7 @@ not a separate shape.
 
 ### <path:line>, <path:line>, ...
 Shared purpose: <one sentence>
+Contained units matched: <n> of <n> (containment-collapsed groups only, from stage 3)
 Differences:
 - <behavioural difference>
 Likely corrected side: <path> — <evidence>
@@ -247,10 +261,11 @@ Likely corrected side: <path> — <evidence>
 
 ### <path:line>, <path:line>, ...
 Shared purpose: <one sentence>
+Contained units matched: <n> of <n> (containment-collapsed groups only, from stage 3)
 Consolidation: ~<n> lines
 
 ## Justified duplication (N)
-- <path:line>, <path:line>, ... — <reason, with the evidence quoted>
+- <path:line>, <path:line>, ... — <reason, with the evidence quoted> (containment-collapsed groups only: contained units matched <n> of <n>)
 
 ## Coverage
 Corpus: <all source files | tests>
@@ -274,6 +289,10 @@ Consolidation size is the sum of the members' line counts minus the largest memb
 would disappear if the twins were merged into the largest one. Write it as an estimate,
 because it is one: a consolidation that needs a new shared abstraction saves less than the
 arithmetic suggests.
+
+Omit the `Contained units matched` line entirely for an ordinary group — most groups are not
+the product of stage 3's containment collapse, and the line only means something for the
+ones that are.
 
 The paths reaching you from stages 3 and 4 are absolute, because that is what you handed the
 subagents. Strip the audit root back off before writing the report: a reader wants
