@@ -8,7 +8,8 @@ description: Use when hunting for semantic twins — type-4 clones, meaning func
 Announce at start: "Using semantic-twins to audit <path> for type-4 clones."
 
 Read `<skill base directory>/references/taxonomy.md` before stage 4. It defines four
-verification outcomes plus one pre-verification exclusion, and what a finding may claim.
+verification outcomes plus one pre-verification exclusion, the ranking rule for ordering
+findings — larger consolidation first within `STABLE` — and what a finding may claim.
 
 ## What this is for
 
@@ -30,7 +31,7 @@ When you do, say so in the Coverage block's `Corpus:` line — a report of test-
 read as if it covered production code would mislead.
 
 ```bash
-INVENTORY="$(mktemp "${TMPDIR:-/tmp}/twins-inventory.XXXXXX.json")"
+INVENTORY="$(mktemp "${TMPDIR:-/tmp}/twins-inventory-XXXXXX")"
 python3 "<skill base directory>/scripts/inventory.py" <repo> > "$INVENTORY"
 echo "$INVENTORY"
 ```
@@ -39,13 +40,32 @@ The path is unique per run — a fixed name collides between concurrent audits. 
 above because shell state does not carry into your next instruction: read the path back
 from the transcript, not from a variable that no longer exists by then.
 
-Read `totals`, `excluded`, `excluded_paths` and `unsupported_extensions` — the Coverage block
-in stage 5 draws every one of its fields from these four, so a stage that reads only the
-counts leaves the report with nothing to fill the path lists and the per-extension breakdown
-with. State the `totals` and `excluded` counts now. If `totals.files` is zero, stop and
-report why: if every `excluded` counter is also zero, nothing was tracked — there is no
-committed source to audit; otherwise every file was filtered, and the nonzero `excluded`
-buckets say by which rule.
+If `python3` exited non-zero, or `$INVENTORY` is empty or does not parse as JSON, stop here
+and report the command you ran and its output — do not proceed into stages that would read
+nothing from a file that was never written correctly.
+
+Read `totals`, `excluded`, `excluded_paths` and `unsupported_extensions` — stage 5's
+`Examined: <n> files` figure, its `Excluded:` line, its `Unsupported extensions:` line and
+its seven path lists all come from these four, so a stage that reads only the counts leaves
+the report with nothing to fill the rest in. State the `totals` and `excluded` counts now.
+If `totals.files` is zero, stop and report why: if every `excluded` counter is zero, nothing
+was tracked — there is no committed source to audit. If `excluded.untracked` is the only
+nonzero counter, files exist but none are committed — a branch in progress, `inventory.py`'s
+most common case, not a report of wholesale filtering. Otherwise one or more of the other
+`excluded` buckets is nonzero and every candidate file was filtered — name the nonzero
+buckets.
+
+Cap every `excluded_paths` list you print in the Coverage block at 20 entries, then say
+`and <n> more` — the same pattern stage 2 uses for its empty-chunk list; none of these lists
+comes with a cap built in. `excluded_paths.untracked` needs a second pass before either
+capping or counting it: `inventory.py` deliberately does not run the extension whitelist or
+the path-rule exclusions (`vendor`, `node_modules`, `migrations`, `__snapshots__`, `dist`,
+`build` segments; `.min.js`/`.generated.cs` suffixes; test paths, unless `--include-tests`
+was passed) against untracked paths — an untracked `node_modules/` or `.venv/` would
+otherwise dwarf every other bucket in the same `Excluded:` line and dump tens of thousands of
+paths into the report. Filter `excluded_paths.untracked` through those same rules yourself
+before counting or listing it, so its number sits next to `unsupported extension` and `by
+path rule` on equal footing.
 
 The inventory's `repo` field holds the absolute audit root; every `files[].path` is relative
 to it. Confirm `repo` matches the audit target before trusting anything downstream of it —
@@ -65,7 +85,7 @@ Give each subagent this brief, with `<path>` and the line range filled in:
 > function, method, class, type — emit exactly one JSON object per line, no prose, no
 > fences:
 >
-> `{"file": "...", "line": 0, "name": "...", "kind": "function|method|class|type", "purpose": "...", "inputs": "...", "outputs": "...", "effects": "...", "invariants": "..."}`
+> `{"file": "...", "line": 0, "name": "...", "kind": "function|method|class|type", "owner": "...", "purpose": "...", "inputs": "...", "outputs": "...", "effects": "...", "invariants": "..."}`
 >
 > **The `purpose` field states what the unit achieves, never how it is built.** This is the
 > single rule that decides whether this run finds anything.
@@ -96,6 +116,11 @@ Give each subagent this brief, with `<path>` and the line range filled in:
 > `effects` names side effects (I/O, mutation, network, global state) or `none`.
 > `invariants` names guards, throws and rounding rules, or `none`.
 >
+> `owner` names the class or type this unit is a member of — the nearest enclosing one, if
+> the file declares more than one — or `none` for a unit with no enclosing class, including
+> a class or type unit itself. Stage 3's containment rule reads this field directly, so
+> get it right rather than leaving it for a start-line heuristic to approximate later.
+>
 > `file` must be copied byte for byte from the `<path>` you were given above — do not
 > normalise, shorten or resolve it. A record whose `file` differs from the dispatched path
 > is unusable downstream: it points at a different file, or at nothing.
@@ -118,6 +143,12 @@ block instead of letting it vanish — list up to 20 there and say "and `<n>` mo
 that, so a badly degraded run does not produce a report that is mostly a list of ranges.
 These five numbers are mandatory in stage 5's report — a run where a third of the chunk
 agents came back empty must not read like a complete one.
+
+Before moving to stage 3, reconcile these numbers the way stage 5 reconciles its own:
+chunks dispatched must equal chunks that returned at least one unit plus chunks that
+returned nothing. Unparseable lines and path mismatches are a separate axis, counted within
+whichever chunks produced them, not a third bucket in this sum. If the two sides do not
+match, a chunk's outcome was miscounted — find it before proceeding.
 
 Anchor the dispatch count against `totals.chunks` from stage 1's inventory — the one number
 in this pipeline that a script, not a model, produced. If you dispatched fewer chunks than
@@ -144,9 +175,16 @@ Do this yourself, in one pass. Do not dispatch a subagent — this stage needs t
 index in one context, which is exactly what a subagent does not have.
 
 Read the entire index and group units whose `purpose` describes the same achievement,
-regardless of naming, language or location. For each group emit:
+regardless of naming, language or location. `purpose` is the key; use each unit's `effects`
+as a secondary check — two units whose purpose reads alike but whose `effects` conflict (one
+pure, one with I/O, mutation or network) are a weaker candidate pair, not an automatic
+exclusion, since stage 4 is better placed than you are to say whether the conflict is real.
+Keep them grouped, and let their `effects` and `invariants` travel with them into stage 4's
+brief, where they are a refutation lead rather than something stage 4 has to rediscover from
+the source on its own. For each group emit:
 
-- the member locations as `path:line`
+- the member locations as `path:line`, with each member's `effects` and `invariants`
+  carried over from stage 2
 - one sentence on the shared purpose
 - a confidence from 1 to 5
 
@@ -158,7 +196,11 @@ Within each group, discard any member whose `path:line` duplicates another membe
 after stage 2's dedup — a residual duplicate here is the same unit counted against itself,
 not a second twin. This is the same guard stage 2's dedup applies, just at group-assembly
 time; if a group is left with fewer than two distinct members afterward, discard the group
-itself, since a twin needs at least two.
+itself, since a twin needs at least two. Count each group discarded this way as
+`Dropped as residual duplicate: <n> groups` for the Coverage block — a bucket of its own,
+distinct from `Collapsed into container` below: this guard runs for a different reason
+(an exact duplicate, not a contained unit) and a group it drops must not vanish into either
+count.
 
 Collapse containment next, before recording the candidate count below. Stage 2 inventories
 a class and its own methods as separate units, so a class duplicated across two files
@@ -166,21 +208,26 @@ clusters twice: once as a class-level group, once as a method-level group per du
 method. Left alone, one duplication is reported once per contained unit, all competing for
 slots under the cap below.
 
-A class-level group X **contains** a method-level group Y when every member of Y is a
-method belonging to a class that is itself a member of X — same file, and, if that file
-declares more than one class, the nearest enclosing one. When X contains Y:
+A class-level group X **contains** a method-level group Y when every member of Y has an
+`owner` matching, in the same `file`, the `name` of a member of X. Stage 2's `owner` field
+already resolves which enclosing class a method belongs to when a file declares more than
+one, so this check needs no extra tie-breaking of its own. When X contains Y:
 
-- From the stage 2 index, not from the groups alone, list every method belonging to any
-  member of X. This is the class's full contained set, including methods that never
-  clustered into any group at all.
+- From the stage 2 index, not from the groups alone, list every unit whose `(file, owner)`
+  matches a member of X's `(file, name)`. This is the full contained set across all of X's
+  members, including methods that never clustered into any group at all.
 - For each of those methods, check whether it pairs, in some group, with the corresponding
   method of X's other member(s) — the method occupying the same role in the other class,
   ordinarily the same name.
 - If every one of them pairs this way: report only X. Drop Y and any other method-level
   group made entirely of X's contained methods. Record how many contained units matched as
-  its own field on X — `<k> of <n> contained units matched` — not appended to the
-  shared-purpose sentence: stage 4 is free to rewrite that sentence after reading the
-  source, and a note folded into it would not survive the rewrite.
+  its own field on X — `<k> of <n> contained units matched`, where `n` is the contained-unit
+  count of **one** member of X, not the total summed across every member: for a two-member X
+  with one method each, the intended reading is `1 of 1` per member, not `2 of 2` summed
+  across both. Since a full match means every member's contained set is the same size, any
+  one member fixes `n`. Not appended to the shared-purpose sentence: stage 4 is free to
+  rewrite that sentence after reading the source, and a note folded into it would not
+  survive the rewrite.
 - If even one of them does not pair — a unique method, or one whose counterpart in the
   other class never clustered — the class is only partly duplicated. Drop X instead and
   keep the method-level groups that did pair as separate findings. A partial match is not a
@@ -211,11 +258,13 @@ most valuable kind and this is where one can be lost.
 
 ## Stage 4 — Adversarial verification
 
-Dispatch one subagent per group, at inherited model strength, in parallel batches of at
-most 10.
+Dispatch one subagent per group — omit the model parameter on the dispatch so it inherits
+the orchestrator's model strength, the mirror of stage 2's explicit `haiku` — in parallel
+batches of at most 10.
 
-Give each subagent this brief, with the member list, stage 3's shared-purpose sentence, and
-— when stage 3 recorded one — its contained-units-matched count, filled in:
+Give each subagent this brief, with the member list (each member's `effects` and
+`invariants` from stage 2 included), stage 3's shared-purpose sentence, and — when stage 3
+recorded one — its contained-units-matched count, filled in:
 
 > Read the **actual source around** each of these locations: `<path:line list>` — the whole
 > file, or enough of it to see what sits above the cited line, not only the line itself. A
@@ -224,7 +273,10 @@ Give each subagent this brief, with the member list, stage 3's shared-purpose se
 > cannot find it. If a comment refers to a decision recorded elsewhere, say so and quote
 > what is actually present rather than assuming the reference alone is sufficient. Stage 3's
 > summary layer clustered them on this claimed shared purpose: `<stage 3's purpose
-> sentence>`. Treat that as a lead, not a fact — do not rely on any summary.
+> sentence>`. Treat that as a lead, not a fact — do not rely on any summary. Stage 2 also
+> recorded each member's `effects` and `invariants`: `<member effects/invariants list>`.
+> Treat these as leads too — a claimed `none` is as unverified as the purpose sentence
+> until you have read the source.
 >
 > Your job is **refutation**. Find the reason these are not the same thing. Only if you
 > cannot find one do you report a twin.
@@ -240,6 +292,12 @@ Give each subagent this brief, with the member list, stage 3's shared-purpose se
 >   or commit message stating the decoupling. Quote that evidence. Named, never counted as
 >   a finding.
 > - `NOT_A_TWIN` — you found the reason they differ.
+> - `UNREADABLE` — a cited location could not be read: a wrong path, a deleted file, or
+>   content that no longer matches what stage 3 clustered. Say which member and why. This is
+>   not `NOT_A_TWIN`: you found no evidence at all, not a reason the two differ, and it must
+>   not be counted as a health signal the way a refutation is. Not one of the taxonomy's four
+>   verdicts either — the same kind of escape stage 2's `"purpose": "unclear"` is, scoped to
+>   this stage.
 >
 > Return the shared purpose as one sentence, as it stands after reading the source —
 > corrected from stage 3's claim if that claim was wrong.
@@ -263,11 +321,11 @@ something to recall from memory — compute it as candidate groups (before the c
 fixed at stage 3, not on how stage 4's dispatch loop felt like it went. Print that computed
 count in the Coverage block as `Dispatched to verification: <n> groups` so the arithmetic is
 checkable from the report alone, without a reader having to re-derive it. Sum the verdicts
-stage 4 actually returned — `DIVERGENT` + `STABLE` + `JUSTIFIED` + `NOT_A_TWIN` — and compare
-it to that computed count. They must match; any shortfall is a stage 4 dispatch that came
-back empty, and belongs in the Coverage block as `Verification returned nothing`, not
-silently absorbed into whichever total is convenient. A failed stage 4 dispatch must not be
-indistinguishable from a group that never existed.
+stage 4 actually returned — `DIVERGENT` + `STABLE` + `JUSTIFIED` + `NOT_A_TWIN` +
+`UNREADABLE` — and compare it to that computed count. They must match; any shortfall is a
+stage 4 dispatch that came back empty, and belongs in the Coverage block as
+`Verification returned nothing`, not silently absorbed into whichever total is convenient.
+A failed stage 4 dispatch must not be indistinguishable from a group that never existed.
 
 Groups can have more than two members — the consolidation formula is member-count
 arithmetic (sum of the members minus the largest), not a pairwise one. Every heading below
@@ -300,18 +358,22 @@ Consolidation: ~<n> lines
 Corpus: <all source files | tests>
 Examined: <n> files, <n> units, <n> candidate groups (before the cap)
 Collapsed into container: <n> groups
+Dropped as residual duplicate: <n> groups
 Chunks: <n> of <n> totals.chunks dispatched, <n> returned units, <n> returned nothing, <n> unparseable lines, <n> path mismatches
-Empty chunks (still empty after re-dispatch): <path:range>, <path:range>, ... (or none)
+Empty chunks (still empty after re-dispatch): <path:range>, <path:range>, ... and <n> more (or none)
 Partitioned: yes (<n> partitions) | no
-Excluded: <n> generated, <n> by path rule, <n> unsupported extension, <n> untracked, <n> missing, <n> undecodable, <n> permission denied
+Excluded: <n> by path rule, <n> unsupported extension, <n> generated, <n> symlink, <n> submodule, <n> untracked, <n> missing, <n> undecodable, <n> permission denied
 Unsupported extensions: <ext>: <n>, <ext>: <n>, ... (or none)
 Generated files: <path>, <path>, ... (or none)
+Symlink files: <path>, <path>, ... (or none)
+Submodule files: <path>, <path>, ... (or none)
 Untracked files: <path>, <path>, ... (or none)
 Missing files: <path>, <path>, ... (or none)
 Undecodable files: <path>, <path>, ... (or none)
 Permission denied files: <path>, <path>, ... (or none)
 Dispatched to verification: <n> groups
 Refuted in verification (NOT_A_TWIN): <n> groups
+Unreadable in verification (UNREADABLE): <n> groups
 Verification returned nothing: <n> groups
 Dropped at the cluster cap: <n> groups
 ```
