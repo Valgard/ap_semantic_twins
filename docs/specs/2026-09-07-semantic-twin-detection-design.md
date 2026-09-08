@@ -287,9 +287,12 @@ become search terms against the codebase (concept words, involved types, callers
 followed by the same adversarial check. It answers: does what this change adds already
 exist here?
 
-The agent reconciles its own scope the way the audit reconciles stage 2 and stage 5: every
-examined unit must land in exactly one outcome — reported, refuted, excluded, or no
-candidate found — and the count of units examined must equal dropped plus those four
+The agent reconciles its own scope the way the audit reconciles stage 2 and stage 5. Units
+examined is the whole scope before the drop step, not only the units that reach comparison;
+every one of those that is not dropped lands in exactly one outcome — reported, refuted,
+units excluded (its only candidates were unreportable — a different axis from the
+candidates the "checked and refuted" tally excludes, since one unit can carry several such
+candidates), or no candidate found — and units examined must equal dropped plus those four
 buckets. This is the same closure rule, applied to the agent's asymmetric left-hand side
 instead of the audit's whole-project index.
 

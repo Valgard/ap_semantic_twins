@@ -45,9 +45,9 @@ and report the command you ran and its output — do not proceed into stages tha
 nothing from a file that was never written correctly.
 
 Read `totals`, `excluded`, `excluded_paths` and `unsupported_extensions` — stage 5's
-`Examined: <n> files` figure, its `Excluded:` line, its `Unsupported extensions:` line and
-its seven path lists all come from these four, so a stage that reads only the counts leaves
-the report with nothing to fill the rest in. State the `totals` and `excluded` counts now.
+`Excluded:` line, its `Unsupported extensions:` line and its seven path lists all come from
+these four, so a stage that reads only the counts leaves the report with nothing to fill
+the rest in. State the `totals` and `excluded` counts now.
 If `totals.files` is zero, stop and report why: if every `excluded` counter is zero, nothing
 was tracked — there is no committed source to audit. If `excluded.untracked` is the only
 nonzero counter, files exist but none are committed — a branch in progress, `inventory.py`'s

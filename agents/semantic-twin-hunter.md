@@ -130,9 +130,9 @@ scope the caller named themselves has already designated that tree as the codeba
 search, and excluding it from candidates would mean searching against nothing. Refute or
 confirm the candidate as you would any other. If it would otherwise have been a finding, do
 not place it under Defects, Duplicates or Justified duplication — count it into the "Checked
-and refuted" block's excluded line instead, separate from the candidates refuted on the
-merits: it was not found to differ, it was found to be unreportable, and the two counts must
-not be collapsed into one number that hides which reason applies.
+and refuted" block's candidates-excluded line instead, separate from the candidates refuted
+on the merits: it was not found to differ, it was found to be unreportable, and the two
+counts must not be collapsed into one number that hides which reason applies.
 
 ### 4. Refute each candidate
 
@@ -163,15 +163,21 @@ Exactly one per pair:
 
 ### 6. Reconcile
 
-Every examined unit lands in exactly one outcome for the Scope block: **reported** (at
-least one of its candidates became a finding, under Defects, Duplicates or Justified
+`<n> new units examined` in the Scope block counts the whole scope, before step 1's drop —
+the caller-supplied or diff-derived total, not only the units that go on to comparison.
+Every one of those units that clears the drop lands in exactly one outcome: **reported**
+(at least one of its candidates became a finding, under Defects, Duplicates or Justified
 duplication), **refuted** (none did, but at least one candidate was found and evaluated as
-`NOT_A_TWIN`), **excluded** (its only candidates were the generated, vendored, minified or
-test-side ones step 3 withholds from reporting), or **no candidate found** (step 3's three
-searches turned up nothing at all). When a unit's candidates span more than one of these,
-count it under the strongest: reported beats refuted beats excluded. State the result as one
-equation in the Scope block — examined equals dropped plus the four buckets — the same
-closure the refuted block's heading already applies to its own two parts.
+`NOT_A_TWIN`), **units excluded** (its only candidates were the generated, vendored,
+minified or test-side ones step 3 withholds from reporting), or **no candidate found**
+(step 3's three searches turned up nothing at all). This bucket counts units, not
+candidates — a different axis from the `Checked and refuted` block's own
+candidates-excluded count below, which can differ in value even in a healthy run, since one
+excluded unit can carry several excluded candidates. When a unit's candidates span more
+than one of these, count it under the strongest: reported beats refuted beats units
+excluded. State the result as one equation in the Scope block — examined equals dropped
+plus the four buckets — the same closure the refuted block's heading already applies to its
+own two parts.
 
 ## Output Format
 
@@ -182,7 +188,7 @@ closure the refuted block's heading already applies to its own two parts.
 <n> new units examined — <caller-supplied scope, or from <base>...HEAD, base resolved via <how>>
 <n> units dropped before comparison — generated, vendored, migrations, snapshots, dist or build output, minified, or test code (diff-derived scope only)
 <n> units with no candidate found at all
-<n> examined = <n> dropped + <n> no candidate found + <n> reported + <n> refuted + <n> excluded
+<n> examined = <n> dropped + <n> no candidate found + <n> reported + <n> refuted + <n> units excluded
 
 ### Defects: divergent twins (N)
 
@@ -203,13 +209,16 @@ Suggestion: <which existing unit to reuse, and what would have to change>
 
 ### Checked and refuted (N)
 <n> candidates examined and rejected. <one line naming the closest call>
-<n> excluded (generated, vendored, migrations, snapshots, dist or build output, minified, or test-side — not reported as findings)
+<n> candidates excluded (generated, vendored, migrations, snapshots, dist or build output, minified, or test-side — not reported as findings)
 ```
 
 The refuted block is the heading plus exactly two lines: the rejected count and closest
-call on one line, the excluded count on the other — `(N)` in the heading is the sum of the
-two. Do not enumerate either list — the point of collapsing them into counts is so a long
-list of obvious non-matches or excluded candidates does not bury the one that was close.
+call on one line, the candidates-excluded count on the other — `(N)` in the heading is the
+sum of the two. This excluded count is on the candidates axis, not the units axis — a
+single unit can have several excluded candidates, so it need not equal the Scope block's
+own `<n> units excluded`. Do not enumerate either list — the point of collapsing them into
+counts is so a long list of obvious non-matches or excluded candidates does not bury the
+one that was close.
 
 Cite two concrete locations per finding. Never make a claim about a category or a layer.
 Do not perform the consolidation: which of two twins survives is an architecture decision.
