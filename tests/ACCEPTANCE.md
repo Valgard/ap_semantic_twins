@@ -42,7 +42,12 @@ misreports this block is still non-conformant. Expected values for this corpus:
   and candidate groups are stage 2/3 output and not pinned to a single number: candidate
   groups before the cap is `3` if the near-miss pair (`validation/`) is never clustered, or
   `4` if it is — in which case that fourth group must resolve to `NOT_A_TWIN` in the
-  `Refuted in verification` line below, per the near-miss row above.
+  `Refuted in verification` line below, per the near-miss row above. That `3` already
+  assumes stage 3's containment collapse ran: `CustomerDto` inventories as both a
+  class-level and a method-level unit in each of `ordering/` and `shipping/`, which
+  clusters into two candidate groups — one per level — before collapsing into the single
+  class-level group counted here. A change to which unit kinds stage 2 inventories changes
+  this number.
 - `Chunks:` `8` dispatched — one chunk per file (`totals.chunks` is also `8`; none of the
   eight files exceeds 800 lines). Every file in this corpus defines a named unit, so a
   healthy run reports `0` for both `returned nothing` and `unparseable lines`.
@@ -82,10 +87,13 @@ code) does not cause it to discard the scope it was given.
 
 Expected: one `DIVERGENT` finding against `pricing/checkout.py:1`, naming at least the same
 two behavioural differences as the table above. The agent must not report `slug/`,
-`ordering/` or `validation/` at all — they are not in its asymmetric left-hand side. The
-`### Scope` block must report 1 new unit examined (the caller-supplied scope), 0 units
-dropped before comparison (dropping only applies to a self-derived scope), and 0 units with
-no candidate found — the `checkout.py` twin must be found.
+`ordering/` or `validation/` as findings — they must not appear under Defects, Duplicates or
+Justified duplication. Appearing in the `### Checked and refuted` count is expected and
+correct: they are candidates on the existing-code side, examined and found not to match,
+which is a different thing from being part of its asymmetric left-hand side. The `### Scope`
+block must report 1 new unit examined (the caller-supplied scope), 0 units dropped before
+comparison (dropping only applies to a self-derived scope), and 0 units with no candidate
+found — the `checkout.py` twin must be found.
 
 ## Failure signatures worth naming
 
