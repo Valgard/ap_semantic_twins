@@ -8,7 +8,9 @@ from inventory import build_inventory
 
 ACCEPTANCE = Path(__file__).resolve().parent / "ACCEPTANCE.md"
 CORPUS = Path(__file__).resolve().parent / "fixtures" / "twin-corpus"
-SKILL = Path(__file__).resolve().parent.parent / "SKILL.md"
+SKILL = (
+    Path(__file__).resolve().parent.parent / "skills" / "semantic-twins" / "SKILL.md"
+)
 AGENT = Path(__file__).resolve().parent.parent / "agents" / "semantic-twin-hunter.md"
 
 # Maps the English label ACCEPTANCE.md's `Excluded:` line uses for each

@@ -1,0 +1,14 @@
+{
+  "name": "semantic-twins",
+  "description": "Find semantic twins — type-4 clones that do the same thing while looking nothing alike — in a whole project or in a single change",
+  "version": "1.0.0",
+  "author": {
+    "name": "Valgard Trontheim"
+  },
+  "keywords": [
+    "clone-detection",
+    "duplication",
+    "code-review",
+    "refactoring"
+  ]
+}

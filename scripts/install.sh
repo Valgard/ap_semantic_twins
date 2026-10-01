@@ -7,6 +7,9 @@ shopt -s nullglob
 : "${HOME:?HOME must be set and non-empty}"
 
 REPO="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+# The repository is a Claude Code plugin: the skill lives under
+# skills/semantic-twins/, the agent at the plugin root's agents/.
+SKILL_SRC="$REPO/skills/semantic-twins"
 SKILL_DEST="$HOME/.claude/skills/semantic-twins"
 AGENT_DEST="$HOME/.claude/agents/semantic-twin-hunter.md"
 DEFAULT_MODE=symlink
@@ -24,15 +27,13 @@ usage() {
     exit 2
 }
 
-# A wrong REPO must never reach rm -rf. The deployed copy
-# (~/.claude/skills/semantic-twins/scripts/install.sh) is the most natural
-# place a user finds this script; without physical resolution above, running
-# it from there would make REPO the symlink itself, so `rm -rf "$SKILL_DEST"`
-# deletes the deployment and `ln -sfn "$REPO" "$SKILL_DEST"` recreates it as a
-# dead, self-referential link -- silently, with exit 0. `cd -P` already
-# defeats that for a symlinked deployment by resolving through it to the real
-# repository; this guard is the categorical backstop for any other way REPO
-# could end up inside the deployed tree.
+# A wrong REPO must never reach rm -rf. Invoked through a symlink to the
+# checkout, a logical `cd` would make REPO the symlink path instead of the
+# repository; `cd -P` resolves through it. A full checkout cloned or copied
+# to $SKILL_DEST by hand has no symlink to resolve, so REPO lies inside the
+# deployed tree and `rm -rf "$SKILL_DEST"` would delete the checkout itself
+# -- silently, with exit 0. This guard is the categorical backstop for that
+# and any other way REPO could end up under ~/.claude.
 home_real="$(cd -P "$HOME" 2>/dev/null && pwd -P)" || home_real="$HOME"
 case "$REPO" in
     "$home_real/.claude" | "$home_real/.claude"/*)
@@ -131,10 +132,10 @@ if [ "$check_only" -eq 1 ]; then
         status=1
     elif [ -L "$SKILL_DEST" ]; then
         skill_target="$(cd -P "$SKILL_DEST" && pwd -P)"
-        if [ "$skill_target" = "$REPO" ]; then
+        if [ "$skill_target" = "$SKILL_SRC" ]; then
             echo "skill: symlink, cannot drift"
         else
-            echo "drift: skill symlink points to $skill_target, expected $REPO" >&2
+            echo "drift: skill symlink points to $skill_target, expected $SKILL_SRC" >&2
             status=1
         fi
     elif [ ! -e "$SKILL_DEST" ]; then
@@ -144,11 +145,11 @@ if [ "$check_only" -eq 1 ]; then
         echo "drift: skill deployed as copy, symlink requested" >&2
         status=1
     else
-        if check_diff "-rq" "$REPO/SKILL.md" "$SKILL_DEST/SKILL.md" "SKILL.md"; then
+        if check_diff "-rq" "$SKILL_SRC/SKILL.md" "$SKILL_DEST/SKILL.md" "SKILL.md"; then
             echo "skill: copy in sync"
         fi
 
-        if check_diff "-rq" "$REPO/references" "$SKILL_DEST/references" "references/"; then
+        if check_diff "-rq" "$SKILL_SRC/references" "$SKILL_DEST/references" "references/"; then
             echo "references: copy in sync"
         fi
 
@@ -157,7 +158,7 @@ if [ "$check_only" -eq 1 ]; then
         # a leftover from an older version would otherwise go unnoticed.
         scripts_ok=1
         for script_name in "${DEPLOYED_SCRIPTS[@]}"; do
-            if ! check_diff "-q" "$REPO/scripts/$script_name" "$SKILL_DEST/scripts/$script_name" "scripts/$script_name"; then
+            if ! check_diff "-q" "$SKILL_SRC/scripts/$script_name" "$SKILL_DEST/scripts/$script_name" "scripts/$script_name"; then
                 scripts_ok=0
             fi
         done
@@ -249,14 +250,14 @@ stage="$(mktemp -d "$HOME/.claude/.semantic-twins-install.XXXXXX")"
 trap 'rm -rf "$stage"' EXIT
 
 if [ "$mode" = symlink ]; then
-    ln -sfn "$REPO" "$stage/skill"
+    ln -sfn "$SKILL_SRC" "$stage/skill"
     ln -sfn "$REPO/agents/semantic-twin-hunter.md" "$stage/agent"
 else
     mkdir -p "$stage/skill/scripts"
-    cp "$REPO/SKILL.md" "$stage/skill/SKILL.md"
-    cp -R "$REPO/references" "$stage/skill/references"
+    cp "$SKILL_SRC/SKILL.md" "$stage/skill/SKILL.md"
+    cp -R "$SKILL_SRC/references" "$stage/skill/references"
     for script_name in "${DEPLOYED_SCRIPTS[@]}"; do
-        cp "$REPO/scripts/$script_name" "$stage/skill/scripts/$script_name"
+        cp "$SKILL_SRC/scripts/$script_name" "$stage/skill/scripts/$script_name"
     done
     cp "$REPO/agents/semantic-twin-hunter.md" "$stage/agent"
 fi

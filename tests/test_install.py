@@ -9,6 +9,7 @@ from typing import NamedTuple
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+SKILL_SRC = REPO_ROOT / "skills" / "semantic-twins"
 INSTALL_SH = str(REPO_ROOT / "scripts" / "install.sh")
 
 
@@ -68,30 +69,28 @@ def test_symlink_mode_creates_symlinks_at_both_destinations(fake_home: FakeHome)
 
 def test_symlink_targets_resolve_to_the_repository(fake_home: FakeHome):
     fake_home.run("--mode", "symlink")
-    assert _skill_dest(fake_home.path).resolve() == REPO_ROOT.resolve()
+    assert _skill_dest(fake_home.path).resolve() == SKILL_SRC.resolve()
     assert (
         _agent_dest(fake_home.path).resolve()
         == (REPO_ROOT / "agents" / "semantic-twin-hunter.md").resolve()
     )
 
 
-def test_running_installer_through_the_deployed_symlink_does_not_destroy_it(
+def test_running_installer_through_a_symlinked_checkout_links_the_real_one(
     fake_home: FakeHome,
+    tmp_path: Path,
 ):
-    # The single most important test in this file. Before the fix, REPO was
-    # computed with a logical `cd`, so invoking install.sh through the
-    # deployed symlink (the most natural place a user finds it) made REPO
-    # equal to the symlink path itself: `rm -rf "$SKILL_DEST"` then deleted
-    # the deployment, and `ln -sfn "$REPO" "$SKILL_DEST"` recreated it as a
-    # dead, self-referential link -- with exit 0 and a success message.
-    fake_home.run("--mode", "symlink")
-    skill_dest = _skill_dest(fake_home.path)
-    deployed_install_sh = str(skill_dest / "scripts" / "install.sh")
+    # With a logical `cd`, invoking install.sh through a symlink to the
+    # checkout makes REPO the symlink path rather than the repository, and
+    # the deployed skill link records that alias instead of the real
+    # directory. `cd -P` resolves through it.
+    alias = tmp_path / "checkout-alias"
+    alias.symlink_to(REPO_ROOT)
 
     env = os.environ.copy()
     env["HOME"] = str(fake_home.path)
     result = subprocess.run(
-        [deployed_install_sh],
+        [str(alias / "scripts" / "install.sh")],
         env=env,
         capture_output=True,
         text=True,
@@ -99,8 +98,9 @@ def test_running_installer_through_the_deployed_symlink_does_not_destroy_it(
     )
 
     assert result.returncode == 0
+    skill_dest = _skill_dest(fake_home.path)
     assert skill_dest.is_symlink()
-    assert skill_dest.resolve() == REPO_ROOT.resolve()
+    assert Path(os.readlink(skill_dest)) == SKILL_SRC.resolve()
     assert (skill_dest / "SKILL.md").exists()
 
 
@@ -109,8 +109,7 @@ def _copy_real_checkout(dest: Path) -> None:
     so it looks like a real (non-symlinked) checkout placed there -- e.g. by
     `git clone` or a plain file copy, never installed through this script."""
     dest.mkdir(parents=True, exist_ok=True)
-    shutil.copy(REPO_ROOT / "SKILL.md", dest / "SKILL.md")
-    shutil.copytree(REPO_ROOT / "references", dest / "references")
+    shutil.copytree(REPO_ROOT / "skills", dest / "skills")
     shutil.copytree(REPO_ROOT / "scripts", dest / "scripts")
     shutil.copytree(REPO_ROOT / "agents", dest / "agents")
 
@@ -118,17 +117,17 @@ def _copy_real_checkout(dest: Path) -> None:
 def test_running_installer_from_a_real_checkout_placed_under_claude_refuses(
     fake_home: FakeHome,
 ):
-    # The guard's other half. `cd -P` defeats REPO == SKILL_DEST only when
-    # SKILL_DEST is a symlink to resolve *through*; a real checkout placed
-    # directly at $HOME/.claude/skills/semantic-twins (cloned or copied there
-    # by hand, never installed through this script) has no symlink to
-    # resolve, so REPO physically equals SKILL_DEST. Without the categorical
-    # guard, running install.sh from there would make `rm -rf "$SKILL_DEST"`
-    # delete this very checkout and recreate it as a dead, self-referential
-    # link -- silently, with exit 0.
+    # A real checkout placed directly at $HOME/.claude/skills/semantic-twins
+    # (cloned or copied there by hand, never installed through this script)
+    # has no symlink for `cd -P` to resolve, so REPO physically equals
+    # SKILL_DEST. Without the categorical guard, running install.sh from
+    # there would make `rm -rf "$SKILL_DEST"` delete this very checkout and
+    # replace it with a dangling link into the deleted tree -- silently,
+    # with exit 0.
     skill_dest = _skill_dest(fake_home.path)
     _copy_real_checkout(skill_dest)
-    marker = (skill_dest / "SKILL.md").read_text()
+    marker_file = skill_dest / "skills" / "semantic-twins" / "SKILL.md"
+    marker = marker_file.read_text()
 
     deployed_install_sh = str(skill_dest / "scripts" / "install.sh")
     env = os.environ.copy()
@@ -145,7 +144,7 @@ def test_running_installer_from_a_real_checkout_placed_under_claude_refuses(
     assert "must be run from the repository checkout" in result.stderr
     assert skill_dest.is_dir()
     assert not skill_dest.is_symlink()
-    assert (skill_dest / "SKILL.md").read_text() == marker
+    assert marker_file.read_text() == marker
 
 
 def test_copy_mode_deploys_scripts_directory_with_only_inventory(fake_home: FakeHome):
@@ -180,7 +179,7 @@ def test_symlink_install_after_copy_replaces_the_stale_copy_directory(
 
     skill_dest = _skill_dest(fake_home.path)
     assert skill_dest.is_symlink()
-    assert skill_dest.resolve() == REPO_ROOT.resolve()
+    assert skill_dest.resolve() == SKILL_SRC.resolve()
 
     check_result = fake_home.run("--check")
     assert check_result.returncode == 0
@@ -265,7 +264,7 @@ def test_check_detects_a_symlink_pointing_at_the_wrong_target(fake_home: FakeHom
     assert result.returncode == 1
     assert "drift: skill symlink points to" in result.stderr
     assert str(wrong_target.resolve()) in result.stderr
-    assert str(REPO_ROOT.resolve()) in result.stderr
+    assert str(SKILL_SRC.resolve()) in result.stderr
 
 
 def test_check_reports_missing_destination_rather_than_differs(fake_home: FakeHome):
