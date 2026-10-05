@@ -1,6 +1,6 @@
 ---
 name: semantic-twins
-description: Use when hunting for semantic twins — type-4 clones, meaning functionally equivalent code that token- and AST-based detectors cannot see because the syntax is unrelated. Runs a whole-project audit in five stages. For the diff-scoped question "does what this change adds already exist in the codebase?", dispatch the semantic-twin-hunter agent instead; it is the same method with a smaller left-hand side.
+description: Use when hunting for semantic twins — type-4 clones, meaning functionally equivalent code that token- and AST-based detectors cannot see because the syntax is unrelated. Runs a whole-project audit in five stages. For the diff-scoped question "does what this change adds already exist in the codebase?", dispatch the semantic-twin-hunter agent instead (semantic-twins:semantic-twin-hunter when installed as a plugin); it is the same method with a smaller left-hand side.
 ---
 
 # Semantic Twin Detection

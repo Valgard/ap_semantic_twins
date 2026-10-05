@@ -26,8 +26,8 @@ to `~/.claude/.gitignore` — `~/.claude/agents/` is tracked, and this symlink i
 Restart Claude Code afterwards — skills and agents are discovered at session start.
 
 Installed as a plugin instead, the agent is registered as
-`semantic-twins:semantic-twin-hunter`, while `SKILL.md`'s description names it by its bare
-name. Whether that still reaches the agent has not been tested; use `install.sh` until it has.
+`semantic-twins:semantic-twin-hunter`. A dispatch by the bare name does not reach it
+(`Agent type 'semantic-twin-hunter' not found`), so `SKILL.md`'s description names both forms.
 
 ## Layout
 
